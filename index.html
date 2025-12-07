@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProTrax v31: Auto-Fit Text</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #0f172a; color: #f1f5f9; }
+        
+        .workspace {
+            position: relative;
+            background: #000;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #videoElement { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #analysisCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; z-index: 20; }
+
+        /* --- Broadcast Overlay (Auto-Fit Ready) --- */
+        #broadcastOverlay {
+            position: absolute;
+            top: 3%;
+            left: 3%;
+            z-index: 30;
+            width: 20%; 
+            min-width: 130px; 
+            
+            container-type: inline-size;
+            
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 4px 10px rgba(0,0,0,0.7);
+            font-family: 'Teko', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+        }
+
+        /* Row 1: Name & Score */
+        .row-top { display: flex; height: 20cqi; }
+        .box-name { 
+            flex: 1; background: white; color: #111; 
+            display: flex; align-items: center; justify-content: center;
+            /* Base font size (will be overridden by JS if text is long) */
+            font-size: 12cqi; 
+            font-weight: 700; 
+            white-space: nowrap; overflow: hidden; 
+            padding: 0 2cqi; /* Padding for safety */
+            line-height: 1;
+            padding-top: 1cqi;
+        }
+        .box-score {
+            width: 30%; background: #dc2626; color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14.5cqi; 
+            font-weight: 700;
+            line-height: 1;
+            padding-top: 1cqi;
+        }
+
+        /* Row 2: Stats & Shot */
+        .row-mid { display: flex; height: 14cqi; background: #15803d; }
+        .box-stats {
+            flex: 1; color: white;
+            display: flex; align-items: center; justify-content: center;
+            padding-left: 0;
+            font-size: 8.5cqi; 
+            font-weight: 600;
+            gap: 2cqi;
+        }
+        .stat-group { display: flex; align-items: baseline; }
+        .stat-label { font-size: 5cqi; margin-left: 1cqi; font-weight: 400; opacity: 0.9; }
+        
+        .box-shot {
+            display: flex; align-items: center; padding-right: 1.5cqi; gap: 1cqi;
+        }
+        .shot-num {
+            width: 8cqi; height: 8cqi; 
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 8cqi;
+            border-radius: 2px;
+            line-height: 1;
+            padding-top: 0.5cqi;
+        }
+        .shot-active { background: white; color: #15803d; box-shadow: 0 1px 3px rgba(0,0,0,0.3); } 
+        .shot-inactive { background: #0f5f2c; color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.1); }
+
+        /* Row 3: Course */
+        .row-bot {
+            height: 11cqi; background: #facc15; color: #111;
+            display: flex; align-items: center; justify-content: center;
+            /* Base font size */
+            font-size: 7.2cqi; 
+            font-weight: 700;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+            padding: 0 2cqi;
+            padding-top: 0.5cqi;
+        }
+
+        /* Custom Slider */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 14px; width: 14px;
+            border-radius: 50%; background: #ffffff;
+            cursor: pointer; margin-top: -5px; box-shadow: 0 0 0 2px #94a3b8; transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen selection:bg-slate-500 selection:text-white">
+
+    <!-- Navbar -->
+    <nav class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 z-30 sticky top-0">
+        <div class="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-golf-ball-tee text-white text-lg"></i>
+                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v31 Auto-Fit</span></span>
+            </div>
+            <button onclick="location.reload()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded hover:bg-slate-800 transition-colors">
+                <i class="fa-solid fa-arrows-rotate"></i> 초기화
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow p-4 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Workspace -->
+        <div class="lg:col-span-2 flex flex-col gap-4">
+            <div class="workspace aspect-video group" id="videoWrapper">
+                <!-- Upload UI -->
+                <div id="uploadUI" class="absolute inset-0 z-40 bg-slate-900/95 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-4 rounded-xl cursor-pointer hover:border-white hover:bg-slate-800/50 transition-all group-hover:scale-[1.01]" onclick="document.getElementById('fileIn').click()">
+                    <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400 group-hover:text-white group-hover:bg-slate-700 transition-all">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-200">영상 파일 선택</h3>
+                    <p class="text-sm text-slate-500 mt-2">MP4, MOV (소리 포함)</p>
+                    <input type="file" id="fileIn" accept="video/*" class="hidden">
+                </div>
+
+                <!-- Broadcast Overlay -->
+                <div id="broadcastOverlay" class="hidden">
+                    <div class="row-top">
+                        <div class="box-name" id="dispName">Rory McIlroy</div>
+                        <div class="box-score" id="dispScore">-9</div>
+                    </div>
+                    <div class="row-mid">
+                        <div class="box-stats">
+                            <div class="stat-group">
+                                <span id="dispHole">16</span><span class="stat-label">TH</span>
+                            </div>
+                            <div class="stat-group">
+                                <span id="dispDist">455</span><span class="stat-label">YDS</span>
+                            </div>
+                        </div>
+                        <div class="box-shot">
+                            <div class="shot-num shot-active" id="shot1">1</div>
+                            <div class="shot-num shot-inactive" id="shot2">2</div>
+                            <div class="shot-num shot-inactive" id="shot3">3</div>
+                            <div class="shot-num shot-inactive" id="shot4">4</div>
+                        </div>
+                    </div>
+                    <div class="row-bot" id="dispCourse">
+                        Augusta National Golf Club
+                    </div>
+                </div>
+
+                <video id="videoElement" playsinline preload="auto" crossorigin="anonymous"></video>
+                <canvas id="analysisCanvas"></canvas>
+
+                <!-- Controls -->
+                <div id="controls" class="absolute bottom-0 w-full bg-gradient-to-t from-black/90 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity z-30 flex flex-col gap-2">
+                    <input type="range" id="seek" min="0" max="100" step="0.01" value="0" class="w-full">
+                    <div class="flex justify-between items-center text-sm">
+                        <div class="flex items-center gap-4">
+                            <button id="btnPlay" class="w-8 h-8 flex items-center justify-center hover:text-white text-slate-400 transition-colors"><i class="fa-solid fa-play"></i></button>
+                            <span id="timeDisplay" class="font-mono text-slate-400 text-xs">00:00</span>
+                            <span class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-volume-high"></i> On</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="btnPrevFrame" class="px-2 py-1 bg-slate-800/80 rounded hover:bg-slate-700 text-xs text-white border border-slate-700" title="-1 Frame"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button id="btnNextFrame" class="px-2 py-1 bg-slate-800/80 rounded hover:bg-slate-700 text-xs text-white border border-slate-700" title="+1 Frame"><i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Steps -->
+            <div class="bg-slate-800 rounded-lg p-4 grid grid-cols-5 gap-1 text-center text-xs border border-slate-700 shadow-sm">
+                <div id="step1" class="text-white font-bold border-b-2 border-white pb-2">1. 타격</div>
+                <div id="step2" class="text-slate-500 border-b-2 border-transparent pb-2">2. 최고점</div>
+                <div id="step3" class="text-slate-500 border-b-2 border-transparent pb-2">3. 낙하</div>
+                <div id="step4" class="text-slate-500 border-b-2 border-transparent pb-2">4. 결과</div>
+                <div id="step5" class="text-slate-500 border-b-2 border-transparent pb-2">5. 정보</div>
+            </div>
+        </div>
+
+        <!-- Right: Dashboard -->
+        <div class="flex flex-col gap-4">
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700 min-h-[200px] flex flex-col justify-between" id="instructionPanel">
+                <div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span id="stepBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 uppercase tracking-wider">Step 1</span>
+                    </div>
+                    <h2 class="text-xl font-bold text-white mb-2" id="msgTitle">준비됨</h2>
+                    <p class="text-slate-400 text-sm leading-relaxed whitespace-pre-line" id="msgBody">영상을 업로드하면 분석을 시작합니다.</p>
+                </div>
+                
+                <div class="flex flex-col gap-2 mt-4">
+                    <button id="mainBtn" class="w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all shadow-sm" disabled>대기 중...</button>
+                    <!-- Add Info Button (Visible in Step 4) -->
+                    <button id="addInfoBtn" class="hidden w-full py-3.5 bg-green-700 hover:bg-green-600 text-white font-bold rounded-lg transition-all shadow-sm">
+                        <i class="fa-solid fa-tv mr-2"></i>방송 정보 추가 (Optional)
+                    </button>
+                    <button id="undoBtn" class="w-full py-2 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 hidden text-xs transition-colors"><i class="fa-solid fa-rotate-left mr-1"></i> 이전 포인트 취소</button>
+                </div>
+            </div>
+
+            <!-- Broadcast Info Input Panel (Step 5) -->
+            <div id="infoInputPanel" class="hidden bg-slate-800 p-5 rounded-lg shadow-lg border border-slate-700 animate-in fade-in slide-in-from-right-4">
+                <h3 class="text-sm font-bold text-white mb-4"><i class="fa-solid fa-pen mr-2"></i>중계 정보 입력</h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-xs text-slate-400 font-bold">플레이어 이름</label>
+                        <input type="text" id="inName" value="Rory McIlroy" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-slate-400 font-bold">홀 (Hole)</label>
+                            <input type="number" id="inHole" value="16" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 font-bold">거리 (YDS)</label>
+                            <input type="number" id="inDist" value="455" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-slate-400 font-bold">스코어</label>
+                            <input type="text" id="inScore" value="-9" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-red-400 font-bold">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 font-bold">현재 샷 (1~4)</label>
+                            <input type="number" id="inShot" value="1" min="1" max="4" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 font-bold">골프장 이름</label>
+                        <input type="text" id="inCourse" value="Augusta National Golf Club" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                    </div>
+                    <button id="confirmInfoBtn" class="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm">적용하기</button>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div id="statsPanel" class="hidden flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider flex items-center gap-1"><i class="fa-regular fa-clock"></i> Flight Time</span>
+                        <div class="text-2xl font-bold text-white mt-1"><span id="statTime">0.0</span><span class="text-sm font-normal text-slate-500 ml-1">s</span></div>
+                    </div>
+                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-dots"></i> Apex Height</span>
+                        <div class="text-2xl font-bold text-white mt-1" id="statHeight">--</div>
+                    </div>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 h-48">
+                    <canvas id="chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        /**
+         * ProTrax v31: Auto-Fit Text
+         * Feature: Automatically downscale text size for Name and Course if they overflow container.
+         * Logic: In updateOverlay, check scrollWidth vs clientWidth and reduce fontsize iteratively.
+         */
+
+        const App = {
+            step: 0, 
+            video: { el: null, dur: 0, w: 0, h: 0, playing: false },
+            points: [], 
+            splinePath: [],
+            lag: 0.1
+        };
+
+        const UI = {
+            file: document.getElementById('fileIn'),
+            upload: document.getElementById('uploadUI'),
+            canvas: document.getElementById('analysisCanvas'),
+            ctx: document.getElementById('analysisCanvas').getContext('2d'),
+            seek: document.getElementById('seek'),
+            time: document.getElementById('timeDisplay'),
+            btnPlay: document.getElementById('btnPlay'),
+            btnPrev: document.getElementById('btnPrevFrame'),
+            btnNext: document.getElementById('btnNextFrame'),
+            steps: [1,2,3,4,5].map(n => document.getElementById(`step${n}`)),
+            title: document.getElementById('msgTitle'),
+            body: document.getElementById('msgBody'),
+            btn: document.getElementById('mainBtn'),
+            addInfoBtn: document.getElementById('addInfoBtn'),
+            undo: document.getElementById('undoBtn'),
+            stats: document.getElementById('statsPanel'),
+            badge: document.getElementById('stepBadge'),
+            // Info Panel
+            infoPanel: document.getElementById('infoInputPanel'),
+            overlay: document.getElementById('broadcastOverlay'),
+            confirmInfo: document.getElementById('confirmInfoBtn'),
+            inputs: {
+                name: document.getElementById('inName'),
+                score: document.getElementById('inScore'),
+                hole: document.getElementById('inHole'),
+                dist: document.getElementById('inDist'),
+                shot: document.getElementById('inShot'),
+                course: document.getElementById('inCourse')
+            },
+            displays: {
+                name: document.getElementById('dispName'),
+                score: document.getElementById('dispScore'),
+                hole: document.getElementById('dispHole'),
+                dist: document.getElementById('dispDist'),
+                course: document.getElementById('dispCourse')
+            }
+        };
+
+        // --- Init ---
+        window.onload = () => {
+            App.video.el = document.getElementById('videoElement');
+            UI.file.addEventListener('change', loadVideo);
+            
+            App.video.el.addEventListener('loadedmetadata', onVideoReady);
+            App.video.el.addEventListener('timeupdate', onTimeUpdate);
+            App.video.el.addEventListener('ended', () => { App.video.playing = false; updatePlayIcon(); });
+
+            UI.btnPlay.addEventListener('click', togglePlay);
+            UI.seek.addEventListener('input', (e) => {
+                App.video.el.currentTime = e.target.value;
+                render();
+            });
+            UI.seek.addEventListener('mousedown', () => App.video.el.pause());
+            
+            UI.btnPrev.addEventListener('click', () => frameStep(-0.033));
+            UI.btnNext.addEventListener('click', () => frameStep(0.033));
+
+            UI.canvas.addEventListener('mousedown', onCanvasClick);
+            UI.btn.addEventListener('click', onMainAction);
+            UI.addInfoBtn.addEventListener('click', () => setStep(5));
+            UI.confirmInfo.addEventListener('click', updateOverlay);
+            UI.undo.addEventListener('click', onUndo);
+
+            window.addEventListener('resize', () => {
+                render();
+                if(App.step === 5 || !UI.overlay.classList.contains('hidden')) {
+                    // Re-run text fit on resize
+                    adjustFontSize(UI.displays.name);
+                    adjustFontSize(UI.displays.course);
+                }
+            });
+            requestAnimationFrame(animLoop);
+        };
+
+        // --- Text Fit Logic ---
+        function adjustFontSize(element) {
+            if (!element) return;
+            // Reset to default CSS value (remove inline style)
+            element.style.fontSize = "";
+            
+            // Allow browser to render and check width
+            // If text overflows (scrollWidth > clientWidth)
+            if (element.scrollWidth > element.clientWidth) {
+                let currentSize = parseFloat(window.getComputedStyle(element).fontSize);
+                // Reduce until it fits or hits min size (8px)
+                while (element.scrollWidth > element.clientWidth && currentSize > 8) {
+                    currentSize -= 0.5;
+                    element.style.fontSize = currentSize + "px";
+                }
+            }
+        }
+
+        function loadVideo(e) {
+            const f = e.target.files[0];
+            if(!f) return;
+            App.video.el.src = URL.createObjectURL(f);
+            App.video.el.muted = false; 
+            UI.upload.classList.add('hidden');
+        }
+
+        function onVideoReady() {
+            App.video.dur = App.video.el.duration;
+            App.video.w = App.video.el.videoWidth;
+            App.video.h = App.video.el.videoHeight;
+            UI.seek.max = App.video.dur;
+            setStep(1);
+            render();
+        }
+
+        function togglePlay() {
+            if(App.video.el.paused) {
+                App.video.el.play();
+                App.video.playing = true;
+            } else {
+                App.video.el.pause();
+                App.video.playing = false;
+            }
+            updatePlayIcon();
+        }
+
+        function updatePlayIcon() {
+            UI.btnPlay.innerHTML = App.video.playing ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+        }
+
+        function frameStep(dt) {
+            App.video.el.pause();
+            App.video.playing = false;
+            updatePlayIcon();
+            App.video.el.currentTime = Math.max(0, Math.min(App.video.dur, App.video.el.currentTime + dt));
+        }
+
+        function onTimeUpdate() {
+            if(App.video.playing) UI.seek.value = App.video.el.currentTime;
+            UI.time.textContent = App.video.el.currentTime.toFixed(2);
+        }
+
+        function setStep(s) {
+            App.step = s;
+            updateUI();
+        }
+
+        function updateUI() {
+            UI.steps.forEach((el, i) => {
+                const isActive = (i+1 === App.step);
+                const isPast = (i+1 < App.step);
+                let colorClass = "text-slate-600 border-transparent"; 
+                if (isActive) colorClass = "text-white border-white font-bold";
+                else if (isPast) colorClass = "text-slate-400 border-slate-700 opacity-60";
+                el.className = `border-b-2 pb-2 transition-all ${colorClass}`;
+                if (isActive) {
+                    UI.badge.innerText = `STEP ${i+1}`;
+                    UI.badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-900 uppercase tracking-wider";
+                }
+            });
+            
+            UI.undo.classList.add('hidden');
+            UI.addInfoBtn.classList.add('hidden');
+            UI.btn.classList.remove('hidden');
+            UI.infoPanel.classList.add('hidden');
+            
+            switch(App.step) {
+                case 1:
+                    UI.title.innerText = "타격 시점 (Impact) 설정";
+                    UI.body.innerText = "공이 타격되는 순간(Impact)의 위치를 정확히 클릭하세요.";
+                    setBtn("위치 클릭 대기중", false);
+                    break;
+                case 2:
+                    UI.title.innerText = "중간 궤적 입력";
+                    UI.body.innerHTML = "공이 날아가는 경로를 따라 1개 이상의 점을 클릭하세요.<br><b>마지막 점이 최고점(APEX)으로 기록됩니다.</b>";
+                    const ptCount = App.points.filter(p => p.type === 'mid').length;
+                    setBtn(ptCount >= 1 ? "다음: 낙하지점 설정" : "최소 1개 이상 입력", ptCount >= 1, "bg-slate-600 hover:bg-slate-500 text-white");
+                    UI.undo.classList.remove('hidden');
+                    break;
+                case 3:
+                    UI.title.innerText = "낙하지점 (Landing Point) 설정";
+                    UI.body.innerText = "공이 지면에 닿는 순간을 찾아 클릭하세요. 궤적의 끝점입니다.";
+                    setBtn("위치 클릭 대기중", false);
+                    UI.undo.classList.remove('hidden');
+                    break;
+                case 4:
+                    UI.title.innerText = "분석 완료";
+                    UI.body.innerText = "화이트 혜성 궤적을 확인하세요. \n추가 정보를 넣으려면 '방송 정보 추가'를 누르세요.";
+                    setBtn("스윙 다시 보기 (Replay)", true, "bg-white hover:bg-gray-200 text-slate-900 shadow-lg");
+                    UI.stats.classList.remove('hidden');
+                    UI.addInfoBtn.classList.remove('hidden');
+                    break;
+                case 5:
+                    UI.title.innerText = "방송 정보 입력";
+                    UI.body.innerText = "화면 좌측 상단에 표시될 플레이어 및 코스 정보를 입력하세요.";
+                    UI.btn.classList.add('hidden');
+                    UI.stats.classList.add('hidden');
+                    UI.infoPanel.classList.remove('hidden');
+                    updateOverlay(); 
+                    break;
+            }
+        }
+
+        function setBtn(txt, active, cls) {
+            UI.btn.innerText = txt;
+            UI.btn.disabled = !active;
+            UI.btn.className = active 
+                ? (cls || "w-full py-3.5 bg-white hover:bg-gray-200 text-slate-900 font-bold rounded-lg transition-all shadow-lg")
+                : "w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all";
+        }
+
+        function onMainAction() {
+            if(App.step === 2) {
+                setStep(3);
+                App.video.el.currentTime = Math.min(App.video.dur, App.video.el.currentTime + 1.5);
+            } else if(App.step === 4) {
+                // Replay
+                App.video.el.currentTime = App.points[0].t - 0.5 > 0 ? App.points[0].t - 0.5 : 0;
+                App.video.el.play();
+                App.video.playing = true;
+                updatePlayIcon();
+            }
+        }
+
+        function updateOverlay() {
+            UI.displays.name.innerText = UI.inputs.name.value;
+            UI.displays.score.innerText = UI.inputs.score.value;
+            UI.displays.hole.innerText = UI.inputs.hole.value;
+            UI.displays.dist.innerText = UI.inputs.dist.value;
+            UI.displays.course.innerText = UI.inputs.course.value;
+
+            // Shot Logic
+            const shot = parseInt(UI.inputs.shot.value);
+            for(let i=1; i<=4; i++) {
+                const el = document.getElementById(`shot${i}`);
+                if(i === shot) {
+                    el.className = "shot-num shot-active";
+                } else {
+                    el.className = "shot-num shot-inactive";
+                }
+            }
+            UI.overlay.classList.remove('hidden');
+            
+            // Auto Fit Text
+            adjustFontSize(UI.displays.name);
+            adjustFontSize(UI.displays.course);
+        }
+
+        function onUndo() {
+            if(App.points.length > 0) {
+                App.points.pop();
+                if(App.points.length === 0) setStep(1);
+                else if(App.points.length > 0 && App.points[App.points.length-1].type === 'start') setStep(2);
+                else updateUI();
+                render();
+            }
+        }
+
+        function onCanvasClick(e) {
+            if(App.step === 5) return;
+
+            const rect = UI.canvas.getBoundingClientRect();
+            const ratioW = rect.width / App.video.w;
+            const ratioH = rect.height / App.video.h;
+            const scale = Math.min(ratioW, ratioH);
+            const w = App.video.w * scale;
+            const h = App.video.h * scale;
+            const offsetX = (rect.width - w) / 2;
+            const offsetY = (rect.height - h) / 2;
+
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            const nx = (mx - offsetX) / w;
+            const ny = (my - offsetY) / h;
+            const t = App.video.el.currentTime;
+
+            if(nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+
+            const pt = { t, nx, ny, type: '' };
+
+            if(App.step === 1) {
+                pt.type = 'start';
+                App.points = [pt];
+                App.video.el.currentTime += 0.04; 
+                setStep(2);
+            } else if(App.step === 2) {
+                if(t <= App.points[0].t) { alert("타격 시점보다 뒤의 시간을 선택하세요."); return; }
+                pt.type = 'mid';
+                App.points.push(pt);
+                App.points.sort((a,b) => a.t - b.t);
+                updateUI();
+            } else if(App.step === 3) {
+                const lastPt = App.points[App.points.length-1];
+                if(t <= lastPt.t) { alert("이전 점보다 뒤의 시간을 선택하세요."); return; }
+                pt.type = 'end';
+                App.points.push(pt);
+                calculateSpline();
+                setStep(4);
+            }
+            render();
+        }
+
+        function calculateSpline() {
+            const P = App.points.sort((a,b) => a.t - b.t);
+            App.splinePath = [];
+            const stepsPerSegment = 40; 
+            for(let i = 0; i < P.length - 1; i++) {
+                const p0 = i > 0 ? P[i-1] : P[i];
+                const p1 = P[i];
+                const p2 = P[i+1];
+                const p3 = i < P.length - 2 ? P[i+2] : P[i+1];
+                for(let s = 0; s < stepsPerSegment; s++) {
+                    const t = s / stepsPerSegment;
+                    const tt = t * t;
+                    const ttt = tt * t;
+                    const q1 = -ttt + 2*tt - t;
+                    const q2 = 3*ttt - 5*tt + 2;
+                    const q3 = -3*ttt + 4*tt + t;
+                    const q4 = ttt - tt;
+                    const nx = 0.5 * (p0.nx * q1 + p1.nx * q2 + p2.nx * q3 + p3.nx * q4);
+                    const ny = 0.5 * (p0.ny * q1 + p1.ny * q2 + p2.ny * q3 + p3.ny * q4);
+                    const time = p1.t + (p2.t - p1.t) * t;
+                    App.splinePath.push({ nx, ny, t: time });
+                }
+            }
+            const last = P[P.length-1];
+            App.splinePath.push({ nx: last.nx, ny: last.ny, t: last.t });
+            updateStats();
+        }
+
+        function updateStats() {
+            const start = App.points[0];
+            const end = App.points[App.points.length-1];
+            document.getElementById('statTime').innerText = (end.t - start.t).toFixed(2);
+            let minNy = 1;
+            App.splinePath.forEach(p => { if(p.ny < minNy) minNy = p.ny; });
+            const pxHeight = (start.ny - minNy) * App.video.h;
+            document.getElementById('statHeight').innerText = Math.round(pxHeight) + "px";
+            renderChart();
+        }
+
+        function animLoop() {
+            if(App.video.playing) {
+                UI.seek.value = App.video.el.currentTime;
+                UI.time.textContent = App.video.el.currentTime.toFixed(2);
+                render();
+            }
+            requestAnimationFrame(animLoop);
+        }
+
+        function render() {
+            const ctx = UI.ctx;
+            const rect = UI.canvas.getBoundingClientRect();
+            UI.canvas.width = rect.width;
+            UI.canvas.height = rect.height;
+
+            const ratioW = rect.width / (App.video.w || 100);
+            const ratioH = rect.height / (App.video.h || 100);
+            const scale = Math.min(ratioW, ratioH);
+            const w = (App.video.w || 100) * scale;
+            const h = (App.video.h || 100) * scale;
+            const ox = (rect.width - w) / 2;
+            const oy = (rect.height - h) / 2;
+
+            const toScreen = (nx, ny) => ({ x: ox + nx * w, y: oy + ny * h });
+
+            ctx.clearRect(0,0, rect.width, rect.height);
+
+            // Step 4 & 5: Show Trajectory
+            if (App.step >= 4) {
+                drawMeteorTrajectory(ctx, toScreen);
+            } else {
+                drawSimpleTrajectory(ctx, toScreen);
+                drawPoints(ctx, toScreen);
+            }
+        }
+
+        function drawPoints(ctx, toScreen) {
+            App.points.forEach((p, i) => {
+                const pos = toScreen(p.nx, p.ny);
+                let radius = 6;
+                let color = '#fbbf24'; 
+                let border = '#fff';
+                let label = '';
+                if(p.type === 'start') {
+                    radius = 6; color = '#ffffff'; label = 'S';
+                } else if(p.type === 'mid') {
+                    radius = 3; color = '#fbbf24'; 
+                } else if(p.type === 'end') {
+                    radius = 6; color = 'rgba(255, 255, 255, 0.8)'; border = '#ffffff'; label = 'Landing Point'; 
+                }
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, radius, 0, Math.PI*2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = border;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                if(label) {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText(label, pos.x + radius + 4, pos.y + 4);
+                }
+            });
+        }
+
+        function drawSimpleTrajectory(ctx, toScreen) {
+            if(App.splinePath.length === 0) return;
+            ctx.beginPath();
+            const start = toScreen(App.splinePath[0].nx, App.splinePath[0].ny);
+            ctx.moveTo(start.x, start.y);
+            App.splinePath.forEach(p => ctx.lineTo(toScreen(p.nx, p.ny).x, toScreen(p.nx, p.ny).y));
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; 
+            ctx.lineWidth = 3; 
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        function drawMeteorTrajectory(ctx, toScreen) {
+            if(App.splinePath.length === 0) return;
+
+            const now = App.video.el.currentTime;
+            const drawLimit = now - App.lag; 
+            const activePts = App.splinePath.filter(p => p.t <= drawLimit);
+            const screenPts = activePts.map(p => toScreen(p.nx, p.ny));
+
+            if(screenPts.length > 1) {
+                const ARROW_LEN = 6; 
+                let distAcc = 0;
+                let cutIndex = screenPts.length - 1;
+                let cutPoint = screenPts[screenPts.length - 1];
+                
+                for (let i = screenPts.length - 1; i > 0; i--) {
+                    const p1 = screenPts[i];
+                    const p2 = screenPts[i-1];
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    const d = Math.sqrt(dx*dx + dy*dy);
+                    if (distAcc + d >= ARROW_LEN) {
+                        const remaining = ARROW_LEN - distAcc; 
+                        const ratio = remaining / d; 
+                        cutPoint = {
+                            x: p1.x + (p2.x - p1.x) * ratio,
+                            y: p1.y + (p2.y - p1.y) * ratio
+                        };
+                        cutIndex = i - 1;
+                        break;
+                    }
+                    distAcc += d;
+                    cutIndex = i - 1;
+                }
+
+                const totalPoints = cutIndex + 1;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = 3; 
+
+                if(totalPoints > 1) {
+                    for(let i = 0; i < totalPoints - 1; i++) {
+                        const ptA = screenPts[i];
+                        const ptB = screenPts[i+1];
+                        const alpha = Math.pow(i / totalPoints, 2); 
+                        ctx.beginPath();
+                        ctx.moveTo(ptA.x, ptA.y);
+                        ctx.lineTo(ptB.x, ptB.y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; 
+                        ctx.stroke();
+                    }
+                    const ptLast = screenPts[totalPoints-1];
+                    ctx.beginPath();
+                    ctx.moveTo(ptLast.x, ptLast.y);
+                    ctx.lineTo(cutPoint.x, cutPoint.y);
+                    ctx.strokeStyle = `rgba(255, 255, 255, 1.0)`; 
+                    ctx.stroke();
+                }
+                drawArrow(ctx, activePts, toScreen);
+            }
+        }
+
+        function drawArrow(ctx, activePts, toScreen) {
+            if (activePts.length < 2) return;
+            const lastPt = activePts[activePts.length-1];
+            const prevPt = activePts[activePts.length-2];
+            const lastPos = toScreen(lastPt.nx, lastPt.ny);
+            const prevPos = toScreen(prevPt.nx, prevPt.ny);
+            
+            const angle = Math.atan2(lastPos.y - prevPos.y, lastPos.x - prevPos.x);
+            
+            ctx.save();
+            ctx.translate(lastPos.x, lastPos.y);
+            ctx.rotate(angle);
+            
+            ctx.beginPath();
+            ctx.moveTo(2, 0); 
+            ctx.lineTo(-6, -4);
+            ctx.quadraticCurveTo(-4, 0, -6, 4);
+            ctx.closePath();
+            
+            ctx.fillStyle = '#ffffff'; 
+            ctx.fill();
+            
+            // White Glow
+            const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 8);
+            g.addColorStop(0, 'rgba(255,255,255,0.8)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // --- Chart ---
+        let chart = null;
+        function renderChart() {
+            if(chart) chart.destroy();
+            const ctx = document.getElementById('chart').getContext('2d');
+            const startY = App.points[0].ny;
+            const data = App.splinePath.map(p => (startY - p.ny) * 100); 
+            const labels = App.splinePath.map(p => (p.t - App.points[0].t).toFixed(1));
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Height',
+                        data: data,
+                        borderColor: '#ffffff', // White Chart Line
+                        backgroundColor: (context) => {
+                            const ctx = context.chart.ctx;
+                            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+                            gradient.addColorStop(0, 'rgba(255,255,255,0.5)');
+                            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                            return gradient;
+                        },
+                        fill: true,
+                        pointRadius: 0,
+                        tension: 0.4, 
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: {display: false}, tooltip: {mode: 'index', intersect: false} },
+                    scales: { x: {display: false}, y: {display: false} }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
