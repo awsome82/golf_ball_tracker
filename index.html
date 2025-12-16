@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProTrax v31: Auto-Fit Text</title>
+    <title>ProTrax v35: High Quality Export</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,115 +12,70 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Teko:wght@600;700&family=Roboto:wght@700;900&display=swap" rel="stylesheet">
 
     <style>
         body { font-family: 'Noto Sans KR', sans-serif; background-color: #0f172a; color: #f1f5f9; }
         
+        /* Video Container (Isolated) */
         .workspace {
             position: relative;
             background: #000;
             border-radius: 0.75rem;
             overflow: hidden;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
             border: 1px solid #1e293b;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 100%;
+            display: flex; justify-content: center; align-items: center;
         }
 
-        #videoElement { width: 100%; height: 100%; object-fit: contain; display: block; }
+        #videoElement { width: 100%; max-height: 70vh; object-fit: contain; display: block; }
         #analysisCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; cursor: crosshair; z-index: 20; }
 
-        /* --- Broadcast Overlay (Auto-Fit Ready) --- */
+        /* Controls Container */
+        .controls-area {
+            background: #1e293b;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            border: 1px solid #334155;
+        }
+
+        /* Timeline Marker */
+        .timeline-container { position: relative; width: 100%; height: 20px; display: flex; align-items: center; }
+        #seek { z-index: 10; position: relative; width: 100%; }
+        .impact-marker {
+            position: absolute; top: 50%; width: 8px; height: 8px;
+            background: #ef4444; border: 1px solid white;
+            transform: translate(-50%, -50%) rotate(45deg);
+            z-index: 5; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+        }
+
+        /* --- Broadcast Overlay (Preview) --- */
         #broadcastOverlay {
-            position: absolute;
-            top: 3%;
-            left: 3%;
-            z-index: 30;
-            width: 20%; 
-            min-width: 130px; 
-            
-            container-type: inline-size;
-            
-            display: flex;
-            flex-direction: column;
+            position: absolute; top: 3%; left: 3%; z-index: 30; width: 20%; min-width: 130px; 
+            container-type: inline-size; display: flex; flex-direction: column;
             box-shadow: 2px 4px 10px rgba(0,0,0,0.7);
-            font-family: 'Teko', sans-serif;
-            text-transform: uppercase;
-            letter-spacing: -0.02em;
+            font-family: 'Teko', sans-serif; text-transform: uppercase; letter-spacing: -0.02em;
         }
-
-        /* Row 1: Name & Score */
         .row-top { display: flex; height: 20cqi; }
-        .box-name { 
-            flex: 1; background: white; color: #111; 
-            display: flex; align-items: center; justify-content: center;
-            /* Base font size (will be overridden by JS if text is long) */
-            font-size: 12cqi; 
-            font-weight: 700; 
-            white-space: nowrap; overflow: hidden; 
-            padding: 0 2cqi; /* Padding for safety */
-            line-height: 1;
-            padding-top: 1cqi;
-        }
-        .box-score {
-            width: 30%; background: #dc2626; color: white;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14.5cqi; 
-            font-weight: 700;
-            line-height: 1;
-            padding-top: 1cqi;
-        }
-
-        /* Row 2: Stats & Shot */
+        .box-name { flex: 1; background: white; color: #111; display: flex; align-items: center; justify-content: center; font-size: 12cqi; font-weight: 700; white-space: nowrap; overflow: hidden; padding: 0 2cqi; line-height: 1; padding-top: 1cqi; }
+        .box-score { width: 30%; background: #dc2626; color: white; display: flex; align-items: center; justify-content: center; font-size: 14.5cqi; font-weight: 700; line-height: 1; padding-top: 1cqi; }
         .row-mid { display: flex; height: 14cqi; background: #15803d; }
-        .box-stats {
-            flex: 1; color: white;
-            display: flex; align-items: center; justify-content: center;
-            padding-left: 0;
-            font-size: 8.5cqi; 
-            font-weight: 600;
-            gap: 2cqi;
-        }
+        .box-stats { flex: 1; color: white; display: flex; align-items: center; justify-content: center; padding-left: 0; font-size: 8.5cqi; font-weight: 600; gap: 2cqi; }
         .stat-group { display: flex; align-items: baseline; }
         .stat-label { font-size: 5cqi; margin-left: 1cqi; font-weight: 400; opacity: 0.9; }
-        
-        .box-shot {
-            display: flex; align-items: center; padding-right: 1.5cqi; gap: 1cqi;
-        }
-        .shot-num {
-            width: 8cqi; height: 8cqi; 
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 8cqi;
-            border-radius: 2px;
-            line-height: 1;
-            padding-top: 0.5cqi;
-        }
+        .box-shot { display: flex; align-items: center; padding-right: 1.5cqi; gap: 1cqi; }
+        .shot-num { width: 8cqi; height: 8cqi; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 8cqi; border-radius: 2px; line-height: 1; padding-top: 0.5cqi; }
         .shot-active { background: white; color: #15803d; box-shadow: 0 1px 3px rgba(0,0,0,0.3); } 
         .shot-inactive { background: #0f5f2c; color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.1); }
-
-        /* Row 3: Course */
-        .row-bot {
-            height: 11cqi; background: #facc15; color: #111;
-            display: flex; align-items: center; justify-content: center;
-            /* Base font size */
-            font-size: 7.2cqi; 
-            font-weight: 700;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-            padding: 0 2cqi;
-            padding-top: 0.5cqi;
-        }
+        .row-bot { height: 11cqi; background: #facc15; color: #111; display: flex; align-items: center; justify-content: center; font-size: 7.2cqi; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2cqi; padding-top: 0.5cqi; }
 
         /* Custom Slider */
-        input[type=range] { -webkit-appearance: none; background: transparent; }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none; height: 14px; width: 14px;
-            border-radius: 50%; background: #ffffff;
-            cursor: pointer; margin-top: -5px; box-shadow: 0 0 0 2px #94a3b8; transition: transform 0.1s;
-        }
+        input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #ffffff; margin-top: -6px; box-shadow: 0 0 0 2px #3b82f6; transition: transform 0.1s; }
         input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #475569; border-radius: 2px; }
     </style>
 </head>
 <body class="flex flex-col min-h-screen selection:bg-slate-500 selection:text-white">
@@ -130,7 +85,7 @@
         <div class="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-golf-ball-tee text-white text-lg"></i>
-                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v31 Auto-Fit</span></span>
+                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v35 HQ Export</span></span>
             </div>
             <button onclick="location.reload()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded hover:bg-slate-800 transition-colors">
                 <i class="fa-solid fa-arrows-rotate"></i> 초기화
@@ -142,8 +97,8 @@
     <main class="flex-grow p-4 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         <!-- Left: Workspace -->
-        <div class="lg:col-span-2 flex flex-col gap-4">
-            <div class="workspace aspect-video group" id="videoWrapper">
+        <div class="lg:col-span-2 flex flex-col gap-2">
+            <div class="workspace group" id="videoWrapper">
                 <!-- Upload UI -->
                 <div id="uploadUI" class="absolute inset-0 z-40 bg-slate-900/95 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-4 rounded-xl cursor-pointer hover:border-white hover:bg-slate-800/50 transition-all group-hover:scale-[1.01]" onclick="document.getElementById('fileIn').click()">
                     <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400 group-hover:text-white group-hover:bg-slate-700 transition-all">
@@ -154,7 +109,15 @@
                     <input type="file" id="fileIn" accept="video/*" class="hidden">
                 </div>
 
-                <!-- Broadcast Overlay -->
+                <!-- Export Loading Overlay -->
+                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/90 hidden flex flex-col items-center justify-center text-white">
+                    <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <span class="font-bold text-lg">고화질 영상 렌더링 중...</span>
+                    <span class="text-xs text-slate-400 mt-1">끊김 방지를 위해 1.0배속으로 재생됩니다.</span>
+                    <span class="text-xs text-slate-500 mt-4">완료 시 자동 다운로드됩니다.</span>
+                </div>
+
+                <!-- Preview Overlay -->
                 <div id="broadcastOverlay" class="hidden">
                     <div class="row-top">
                         <div class="box-name" id="dispName">Rory McIlroy</div>
@@ -162,12 +125,8 @@
                     </div>
                     <div class="row-mid">
                         <div class="box-stats">
-                            <div class="stat-group">
-                                <span id="dispHole">16</span><span class="stat-label">TH</span>
-                            </div>
-                            <div class="stat-group">
-                                <span id="dispDist">455</span><span class="stat-label">YDS</span>
-                            </div>
+                            <div class="stat-group"><span id="dispHole">16</span><span class="stat-label">TH</span></div>
+                            <div class="stat-group"><span id="dispDist">455</span><span class="stat-label">YDS</span></div>
                         </div>
                         <div class="box-shot">
                             <div class="shot-num shot-active" id="shot1">1</div>
@@ -176,38 +135,33 @@
                             <div class="shot-num shot-inactive" id="shot4">4</div>
                         </div>
                     </div>
-                    <div class="row-bot" id="dispCourse">
-                        Augusta National Golf Club
-                    </div>
+                    <div class="row-bot" id="dispCourse">Augusta National Golf Club</div>
                 </div>
 
                 <video id="videoElement" playsinline preload="auto" crossorigin="anonymous"></video>
                 <canvas id="analysisCanvas"></canvas>
-
-                <!-- Controls -->
-                <div id="controls" class="absolute bottom-0 w-full bg-gradient-to-t from-black/90 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity z-30 flex flex-col gap-2">
-                    <input type="range" id="seek" min="0" max="100" step="0.01" value="0" class="w-full">
-                    <div class="flex justify-between items-center text-sm">
-                        <div class="flex items-center gap-4">
-                            <button id="btnPlay" class="w-8 h-8 flex items-center justify-center hover:text-white text-slate-400 transition-colors"><i class="fa-solid fa-play"></i></button>
-                            <span id="timeDisplay" class="font-mono text-slate-400 text-xs">00:00</span>
-                            <span class="text-xs text-slate-400 flex items-center gap-1"><i class="fa-solid fa-volume-high"></i> On</span>
-                        </div>
-                        <div class="flex gap-2">
-                            <button id="btnPrevFrame" class="px-2 py-1 bg-slate-800/80 rounded hover:bg-slate-700 text-xs text-white border border-slate-700" title="-1 Frame"><i class="fa-solid fa-chevron-left"></i></button>
-                            <button id="btnNextFrame" class="px-2 py-1 bg-slate-800/80 rounded hover:bg-slate-700 text-xs text-white border border-slate-700" title="+1 Frame"><i class="fa-solid fa-chevron-right"></i></button>
-                        </div>
-                    </div>
-                </div>
             </div>
 
-            <!-- Steps -->
-            <div class="bg-slate-800 rounded-lg p-4 grid grid-cols-5 gap-1 text-center text-xs border border-slate-700 shadow-sm">
-                <div id="step1" class="text-white font-bold border-b-2 border-white pb-2">1. 타격</div>
-                <div id="step2" class="text-slate-500 border-b-2 border-transparent pb-2">2. 최고점</div>
-                <div id="step3" class="text-slate-500 border-b-2 border-transparent pb-2">3. 낙하</div>
-                <div id="step4" class="text-slate-500 border-b-2 border-transparent pb-2">4. 결과</div>
-                <div id="step5" class="text-slate-500 border-b-2 border-transparent pb-2">5. 정보</div>
+            <!-- Separated Controls Area -->
+            <div class="controls-area">
+                <div class="timeline-container mb-3">
+                    <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+                    <div id="impactMarker" class="impact-marker"></div>
+                </div>
+                
+                <div class="flex justify-between items-center text-sm">
+                    <div class="flex items-center gap-4">
+                        <button id="btnPlay" class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white text-slate-300 transition-colors shadow"><i class="fa-solid fa-play"></i></button>
+                        <div class="flex flex-col">
+                            <span id="timeDisplay" class="font-mono text-white text-sm font-bold">00:00.00</span>
+                            <span class="text-[10px] text-slate-400">Total Duration</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btnPrevFrame" class="px-3 py-1.5 bg-slate-700 rounded hover:bg-slate-600 text-xs text-white border border-slate-600 transition-colors" title="-1 Frame"><i class="fa-solid fa-chevron-left mr-1"></i> Frame</button>
+                        <button id="btnNextFrame" class="px-3 py-1.5 bg-slate-700 rounded hover:bg-slate-600 text-xs text-white border border-slate-600 transition-colors" title="+1 Frame">Frame <i class="fa-solid fa-chevron-right ml-1"></i></button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -224,47 +178,41 @@
                 
                 <div class="flex flex-col gap-2 mt-4">
                     <button id="mainBtn" class="w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all shadow-sm" disabled>대기 중...</button>
-                    <!-- Add Info Button (Visible in Step 4) -->
-                    <button id="addInfoBtn" class="hidden w-full py-3.5 bg-green-700 hover:bg-green-600 text-white font-bold rounded-lg transition-all shadow-sm">
-                        <i class="fa-solid fa-tv mr-2"></i>방송 정보 추가 (Optional)
-                    </button>
+                    
+                    <div class="grid grid-cols-2 gap-2 hidden" id="resultBtns">
+                        <button id="addInfoBtn" class="col-span-2 py-3 bg-green-700 hover:bg-green-600 text-white font-bold rounded-lg transition-all shadow-sm text-sm">
+                            <i class="fa-solid fa-pen-to-square mr-1"></i> 방송 정보 입력
+                        </button>
+                        <button id="downloadBtn" class="col-span-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-all shadow-sm text-sm flex items-center justify-center">
+                            <i class="fa-solid fa-download mr-1"></i> 고화질 영상 저장 (Export)
+                        </button>
+                    </div>
+
                     <button id="undoBtn" class="w-full py-2 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 hidden text-xs transition-colors"><i class="fa-solid fa-rotate-left mr-1"></i> 이전 포인트 취소</button>
                 </div>
             </div>
 
-            <!-- Broadcast Info Input Panel (Step 5) -->
+            <!-- Broadcast Info Input Panel -->
             <div id="infoInputPanel" class="hidden bg-slate-800 p-5 rounded-lg shadow-lg border border-slate-700 animate-in fade-in slide-in-from-right-4">
                 <h3 class="text-sm font-bold text-white mb-4"><i class="fa-solid fa-pen mr-2"></i>중계 정보 입력</h3>
                 <div class="space-y-3">
                     <div>
-                        <label class="text-xs text-slate-400 font-bold">플레이어 이름</label>
-                        <input type="text" id="inName" value="Rory McIlroy" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                        <label class="text-xs text-slate-400 font-bold">플레이어</label>
+                        <input type="text" id="inName" value="Rory McIlroy" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="text-xs text-slate-400 font-bold">홀 (Hole)</label>
-                            <input type="number" id="inHole" value="16" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
-                        </div>
-                        <div>
-                            <label class="text-xs text-slate-400 font-bold">거리 (YDS)</label>
-                            <input type="number" id="inDist" value="455" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
-                        </div>
+                        <div><label class="text-xs text-slate-400 font-bold">홀</label><input type="number" id="inHole" value="16" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
+                        <div><label class="text-xs text-slate-400 font-bold">거리</label><input type="number" id="inDist" value="455" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="text-xs text-slate-400 font-bold">스코어</label>
-                            <input type="text" id="inScore" value="-9" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-red-400 font-bold">
-                        </div>
-                        <div>
-                            <label class="text-xs text-slate-400 font-bold">현재 샷 (1~4)</label>
-                            <input type="number" id="inShot" value="1" min="1" max="4" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
-                        </div>
+                        <div><label class="text-xs text-slate-400 font-bold">스코어</label><input type="text" id="inScore" value="-9" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-red-400 font-bold text-sm"></div>
+                        <div><label class="text-xs text-slate-400 font-bold">샷</label><input type="number" id="inShot" value="1" min="1" max="4" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
                     </div>
                     <div>
-                        <label class="text-xs text-slate-400 font-bold">골프장 이름</label>
-                        <input type="text" id="inCourse" value="Augusta National Golf Club" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white">
+                        <label class="text-xs text-slate-400 font-bold">골프장</label>
+                        <input type="text" id="inCourse" value="Augusta National Golf Club" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
                     </div>
-                    <button id="confirmInfoBtn" class="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm">적용하기</button>
+                    <button id="confirmInfoBtn" class="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm transition-colors">적용하기</button>
                 </div>
             </div>
 
@@ -272,41 +220,47 @@
             <div id="statsPanel" class="hidden flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div class="grid grid-cols-2 gap-3">
                     <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider flex items-center gap-1"><i class="fa-regular fa-clock"></i> Flight Time</span>
-                        <div class="text-2xl font-bold text-white mt-1"><span id="statTime">0.0</span><span class="text-sm font-normal text-slate-500 ml-1">s</span></div>
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Flight Time</span>
+                        <div class="text-xl font-bold text-white"><span id="statTime">0.0</span>s</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-dots"></i> Apex Height</span>
-                        <div class="text-2xl font-bold text-white mt-1" id="statHeight">--</div>
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Apex Height</span>
+                        <div class="text-xl font-bold text-white" id="statHeight">--</div>
                     </div>
                 </div>
                 <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 h-48">
                     <canvas id="chart"></canvas>
                 </div>
             </div>
+
+            <!-- Steps -->
+            <div class="bg-slate-800 rounded-lg p-4 grid grid-cols-5 gap-1 text-center text-xs border border-slate-700 shadow-sm">
+                <div id="step1" class="text-white font-bold border-b-2 border-white pb-2">1. 타격</div>
+                <div id="step2" class="text-slate-500 border-b-2 border-transparent pb-2">2. 중간궤적</div>
+                <div id="step3" class="text-slate-500 border-b-2 border-transparent pb-2">3. 낙하</div>
+                <div id="step4" class="text-slate-500 border-b-2 border-transparent pb-2">4. 결과</div>
+                <div id="step5" class="text-slate-500 border-b-2 border-transparent pb-2">5. 정보</div>
+            </div>
         </div>
     </main>
 
     <script>
-        /**
-         * ProTrax v31: Auto-Fit Text
-         * Feature: Automatically downscale text size for Name and Course if they overflow container.
-         * Logic: In updateOverlay, check scrollWidth vs clientWidth and reduce fontsize iteratively.
-         */
-
         const App = {
             step: 0, 
             video: { el: null, dur: 0, w: 0, h: 0, playing: false },
             points: [], 
             splinePath: [],
-            lag: 0.1
+            lag: 0.1,
+            isRecording: false,
+            recorder: null,
+            chunks: []
         };
 
         const UI = {
             file: document.getElementById('fileIn'),
             upload: document.getElementById('uploadUI'),
             canvas: document.getElementById('analysisCanvas'),
-            ctx: document.getElementById('analysisCanvas').getContext('2d'),
+            ctx: document.getElementById('analysisCanvas').getContext('2d', { willReadFrequently: true }),
             seek: document.getElementById('seek'),
             time: document.getElementById('timeDisplay'),
             btnPlay: document.getElementById('btnPlay'),
@@ -316,11 +270,15 @@
             title: document.getElementById('msgTitle'),
             body: document.getElementById('msgBody'),
             btn: document.getElementById('mainBtn'),
+            resultBtns: document.getElementById('resultBtns'),
+            dlBtn: document.getElementById('downloadBtn'),
             addInfoBtn: document.getElementById('addInfoBtn'),
             undo: document.getElementById('undoBtn'),
             stats: document.getElementById('statsPanel'),
             badge: document.getElementById('stepBadge'),
-            // Info Panel
+            impactMarker: document.getElementById('impactMarker'),
+            exportOverlay: document.getElementById('exportOverlay'),
+            // Info
             infoPanel: document.getElementById('infoInputPanel'),
             overlay: document.getElementById('broadcastOverlay'),
             confirmInfo: document.getElementById('confirmInfoBtn'),
@@ -348,28 +306,43 @@
             
             App.video.el.addEventListener('loadedmetadata', onVideoReady);
             App.video.el.addEventListener('timeupdate', onTimeUpdate);
-            App.video.el.addEventListener('ended', () => { App.video.playing = false; updatePlayIcon(); });
+            App.video.el.addEventListener('ended', onVideoEnded);
 
             UI.btnPlay.addEventListener('click', togglePlay);
             UI.seek.addEventListener('input', (e) => {
+                if(App.isRecording) return;
                 App.video.el.currentTime = e.target.value;
                 render();
             });
-            UI.seek.addEventListener('mousedown', () => App.video.el.pause());
+            UI.seek.addEventListener('mousedown', () => !App.isRecording && App.video.el.pause());
             
-            UI.btnPrev.addEventListener('click', () => frameStep(-0.033));
-            UI.btnNext.addEventListener('click', () => frameStep(0.033));
+            UI.btnPrev.addEventListener('click', () => !App.isRecording && frameStep(-0.033));
+            UI.btnNext.addEventListener('click', () => !App.isRecording && frameStep(0.033));
 
             UI.canvas.addEventListener('mousedown', onCanvasClick);
             UI.btn.addEventListener('click', onMainAction);
             UI.addInfoBtn.addEventListener('click', () => setStep(5));
-            UI.confirmInfo.addEventListener('click', updateOverlay);
+            UI.confirmInfo.addEventListener('click', () => {
+                updateOverlay();
+                const originalText = UI.confirmInfo.innerText;
+                UI.confirmInfo.innerHTML = '<i class="fa-solid fa-check mr-1"></i> 적용 완료!';
+                UI.confirmInfo.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                UI.confirmInfo.classList.add('bg-green-600', 'hover:bg-green-500');
+                setTimeout(() => {
+                    setStep(4); 
+                    setTimeout(() => {
+                        UI.confirmInfo.innerText = originalText;
+                        UI.confirmInfo.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                        UI.confirmInfo.classList.remove('bg-green-600', 'hover:bg-green-500');
+                    }, 500);
+                }, 1000);
+            });
             UI.undo.addEventListener('click', onUndo);
+            UI.dlBtn.addEventListener('click', startExport);
 
             window.addEventListener('resize', () => {
                 render();
-                if(App.step === 5 || !UI.overlay.classList.contains('hidden')) {
-                    // Re-run text fit on resize
+                if(App.step===5 || !UI.overlay.classList.contains('hidden')) {
                     adjustFontSize(UI.displays.name);
                     adjustFontSize(UI.displays.course);
                 }
@@ -377,17 +350,11 @@
             requestAnimationFrame(animLoop);
         };
 
-        // --- Text Fit Logic ---
         function adjustFontSize(element) {
             if (!element) return;
-            // Reset to default CSS value (remove inline style)
             element.style.fontSize = "";
-            
-            // Allow browser to render and check width
-            // If text overflows (scrollWidth > clientWidth)
             if (element.scrollWidth > element.clientWidth) {
                 let currentSize = parseFloat(window.getComputedStyle(element).fontSize);
-                // Reduce until it fits or hits min size (8px)
                 while (element.scrollWidth > element.clientWidth && currentSize > 8) {
                     currentSize -= 0.5;
                     element.style.fontSize = currentSize + "px";
@@ -407,12 +374,17 @@
             App.video.dur = App.video.el.duration;
             App.video.w = App.video.el.videoWidth;
             App.video.h = App.video.el.videoHeight;
+            // Set canvas size to match video resolution for export quality
+            UI.canvas.width = App.video.w;
+            UI.canvas.height = App.video.h;
+            
             UI.seek.max = App.video.dur;
             setStep(1);
             render();
         }
 
         function togglePlay() {
+            if(App.isRecording) return;
             if(App.video.el.paused) {
                 App.video.el.play();
                 App.video.playing = true;
@@ -439,6 +411,176 @@
             UI.time.textContent = App.video.el.currentTime.toFixed(2);
         }
 
+        function onVideoEnded() {
+            App.video.playing = false;
+            updatePlayIcon();
+            if(App.isRecording) stopExport();
+        }
+
+        // --- Export Logic ---
+        function startExport() {
+            if(App.isRecording) return;
+            App.isRecording = true;
+            UI.exportOverlay.classList.remove('hidden');
+            
+            App.video.el.pause();
+            App.video.el.currentTime = 0; 
+
+            // High Quality: 30FPS for stability
+            const canvasStream = UI.canvas.captureStream(30); 
+            
+            // Audio Capture
+            try {
+                let vStream = null;
+                if(App.video.el.captureStream) vStream = App.video.el.captureStream();
+                else if(App.video.el.mozCaptureStream) vStream = App.video.el.mozCaptureStream();
+                if(vStream && vStream.getAudioTracks().length > 0) {
+                    canvasStream.addTrack(vStream.getAudioTracks()[0]);
+                }
+            } catch(e) {}
+
+            App.chunks = [];
+            // Max Bitrate: 15 Mbps
+            const options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 15000000 };
+            
+            try {
+                App.recorder = new MediaRecorder(canvasStream, options);
+            } catch(e) {
+                // Fallback if VP9/High Bitrate fails
+                try {
+                    App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm', videoBitsPerSecond: 8000000 });
+                } catch(e2) {
+                    App.recorder = new MediaRecorder(canvasStream);
+                }
+            }
+
+            App.recorder.ondataavailable = e => { if(e.data.size > 0) App.chunks.push(e.data); };
+            App.recorder.start();
+            App.video.el.play();
+            App.video.playing = true;
+        }
+
+        function stopExport() {
+            App.recorder.stop();
+            App.isRecording = false;
+            UI.exportOverlay.classList.add('hidden');
+            
+            App.recorder.onstop = () => {
+                const blob = new Blob(App.chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'protrax_export.webm';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+            };
+        }
+
+        // --- Canvas Drawing for Overlay (Export) ---
+        function drawCanvasOverlay(ctx) {
+            if (UI.overlay.classList.contains('hidden')) return;
+
+            const W = UI.canvas.width;
+            const H = UI.canvas.height;
+            const scale = W / 1280; 
+
+            const boxW = 260 * scale;
+            const top = 30 * scale;
+            const left = 30 * scale;
+            const row1H = 50 * scale;
+            const row2H = 35 * scale;
+            const row3H = 30 * scale;
+
+            ctx.font = `bold ${24*scale}px "Teko", sans-serif`;
+            ctx.textBaseline = 'middle';
+
+            // Row 1
+            ctx.fillStyle = 'white';
+            ctx.fillRect(left, top, boxW * 0.75, row1H);
+            ctx.fillStyle = '#111';
+            ctx.textAlign = 'center';
+            let fontSize = 24*scale;
+            ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+            const nameText = UI.inputs.name.value.toUpperCase();
+            while(ctx.measureText(nameText).width > (boxW*0.7) && fontSize > 10) {
+                fontSize--;
+                ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+            }
+            ctx.fillText(nameText, left + (boxW*0.75)/2, top + row1H/2 + (2*scale));
+
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(left + boxW * 0.75, top, boxW * 0.25, row1H);
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${28*scale}px "Roboto", sans-serif`;
+            ctx.fillText(UI.inputs.score.value, left + boxW * 0.75 + (boxW*0.25)/2, top + row1H/2 + (2*scale));
+
+            // Row 2
+            const top2 = top + row1H;
+            ctx.fillStyle = '#15803d';
+            ctx.fillRect(left, top2, boxW, row2H);
+            
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'left';
+            ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
+            
+            const holeX = left + 10*scale;
+            ctx.fillText(UI.inputs.hole.value, holeX, top2 + row2H/2);
+            const holeW = ctx.measureText(UI.inputs.hole.value).width;
+            ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
+            ctx.fillText("TH", holeX + holeW + 2*scale, top2 + row2H/2);
+
+            ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
+            const distX = holeX + holeW + 35*scale;
+            ctx.fillText(UI.inputs.dist.value, distX, top2 + row2H/2);
+            const distW = ctx.measureText(UI.inputs.dist.value).width;
+            ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
+            ctx.fillText("YDS", distX + distW + 2*scale, top2 + row2H/2);
+
+            const shotVal = parseInt(UI.inputs.shot.value);
+            const tileS = 20*scale;
+            const gap = 3*scale;
+            const startX = left + boxW - (4*tileS + 3*gap) - 10*scale;
+            
+            for(let i=1; i<=4; i++) {
+                const x = startX + (i-1)*(tileS+gap);
+                const y = top2 + (row2H - tileS)/2;
+                if(i === shotVal) {
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(x, y, tileS, tileS);
+                    ctx.fillStyle = '#15803d';
+                } else {
+                    ctx.fillStyle = '#0f5f2c'; 
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, tileS, tileS);
+                    ctx.fillRect(x, y, tileS, tileS);
+                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                }
+                ctx.font = `bold ${14*scale}px "Roboto", sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(i, x + tileS/2, y + tileS/2 + 1*scale);
+            }
+
+            // Row 3
+            const top3 = top2 + row2H;
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(left, top3, boxW, row3H);
+            ctx.fillStyle = '#111';
+            ctx.textAlign = 'center';
+            fontSize = 16*scale;
+            ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+            const courseText = UI.inputs.course.value.toUpperCase();
+            while(ctx.measureText(courseText).width > (boxW*0.9) && fontSize > 8) {
+                fontSize--;
+                ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+            }
+            ctx.fillText(courseText, left + boxW/2, top3 + row3H/2 + 1*scale);
+        }
+
+        // --- Logic ---
         function setStep(s) {
             App.step = s;
             updateUI();
@@ -446,10 +588,11 @@
 
         function updateUI() {
             UI.steps.forEach((el, i) => {
+                if(!el) return; 
                 const isActive = (i+1 === App.step);
                 const isPast = (i+1 < App.step);
                 let colorClass = "text-slate-600 border-transparent"; 
-                if (isActive) colorClass = "text-white border-white font-bold";
+                if (isActive) colorClass = "text-red-400 border-red-500 font-bold";
                 else if (isPast) colorClass = "text-slate-400 border-slate-700 opacity-60";
                 el.className = `border-b-2 pb-2 transition-all ${colorClass}`;
                 if (isActive) {
@@ -459,8 +602,8 @@
             });
             
             UI.undo.classList.add('hidden');
-            UI.addInfoBtn.classList.add('hidden');
             UI.btn.classList.remove('hidden');
+            UI.resultBtns.classList.add('hidden');
             UI.infoPanel.classList.add('hidden');
             
             switch(App.step) {
@@ -484,10 +627,11 @@
                     break;
                 case 4:
                     UI.title.innerText = "분석 완료";
-                    UI.body.innerText = "화이트 혜성 궤적을 확인하세요. \n추가 정보를 넣으려면 '방송 정보 추가'를 누르세요.";
-                    setBtn("스윙 다시 보기 (Replay)", true, "bg-white hover:bg-gray-200 text-slate-900 shadow-lg");
+                    UI.body.innerText = "화이트 혜성 궤적을 확인하세요. \n정보를 추가하고 영상을 저장할 수 있습니다.";
+                    UI.btn.classList.add('hidden');
+                    UI.resultBtns.classList.remove('hidden');
+                    UI.resultBtns.className = "grid grid-cols-2 gap-2";
                     UI.stats.classList.remove('hidden');
-                    UI.addInfoBtn.classList.remove('hidden');
                     break;
                 case 5:
                     UI.title.innerText = "방송 정보 입력";
@@ -513,11 +657,7 @@
                 setStep(3);
                 App.video.el.currentTime = Math.min(App.video.dur, App.video.el.currentTime + 1.5);
             } else if(App.step === 4) {
-                // Replay
-                App.video.el.currentTime = App.points[0].t - 0.5 > 0 ? App.points[0].t - 0.5 : 0;
-                App.video.el.play();
-                App.video.playing = true;
-                updatePlayIcon();
+                // Replay not on main button anymore
             }
         }
 
@@ -528,7 +668,6 @@
             UI.displays.dist.innerText = UI.inputs.dist.value;
             UI.displays.course.innerText = UI.inputs.course.value;
 
-            // Shot Logic
             const shot = parseInt(UI.inputs.shot.value);
             for(let i=1; i<=4; i++) {
                 const el = document.getElementById(`shot${i}`);
@@ -539,8 +678,6 @@
                 }
             }
             UI.overlay.classList.remove('hidden');
-            
-            // Auto Fit Text
             adjustFontSize(UI.displays.name);
             adjustFontSize(UI.displays.course);
         }
@@ -548,7 +685,10 @@
         function onUndo() {
             if(App.points.length > 0) {
                 App.points.pop();
-                if(App.points.length === 0) setStep(1);
+                if(App.points.length === 0) { 
+                    setStep(1); 
+                    UI.impactMarker.style.opacity = 0; // Hide marker on undo
+                }
                 else if(App.points.length > 0 && App.points[App.points.length-1].type === 'start') setStep(2);
                 else updateUI();
                 render();
@@ -556,7 +696,7 @@
         }
 
         function onCanvasClick(e) {
-            if(App.step === 5) return;
+            if(App.step === 5 || App.isRecording) return;
 
             const rect = UI.canvas.getBoundingClientRect();
             const ratioW = rect.width / App.video.w;
@@ -581,6 +721,12 @@
             if(App.step === 1) {
                 pt.type = 'start';
                 App.points = [pt];
+                
+                // Show Marker
+                const pct = (t / App.video.dur) * 100;
+                UI.impactMarker.style.left = `${pct}%`;
+                UI.impactMarker.style.opacity = 1;
+
                 App.video.el.currentTime += 0.04; 
                 setStep(2);
             } else if(App.step === 2) {
@@ -651,27 +797,64 @@
         function render() {
             const ctx = UI.ctx;
             const rect = UI.canvas.getBoundingClientRect();
+            // Match canvas size to visual size for sharp editing overlay
             UI.canvas.width = rect.width;
             UI.canvas.height = rect.height;
 
-            const ratioW = rect.width / (App.video.w || 100);
-            const ratioH = rect.height / (App.video.h || 100);
-            const scale = Math.min(ratioW, ratioH);
-            const w = (App.video.w || 100) * scale;
-            const h = (App.video.h || 100) * scale;
-            const ox = (rect.width - w) / 2;
-            const oy = (rect.height - h) / 2;
-
-            const toScreen = (nx, ny) => ({ x: ox + nx * w, y: oy + ny * h });
-
-            ctx.clearRect(0,0, rect.width, rect.height);
-
-            // Step 4 & 5: Show Trajectory
-            if (App.step >= 4) {
-                drawMeteorTrajectory(ctx, toScreen);
+            // Revert to NATIVE Resolution for consistent drawing
+            if(App.isRecording) {
+                UI.canvas.width = App.video.w;
+                UI.canvas.height = App.video.h;
             } else {
-                drawSimpleTrajectory(ctx, toScreen);
-                drawPoints(ctx, toScreen);
+                // Editing mode: Canvas matches display size
+                UI.canvas.width = rect.width;
+                UI.canvas.height = rect.height;
+            }
+
+            const w = UI.canvas.width;
+            const h = UI.canvas.height;
+
+            if(App.isRecording) {
+                // Draw Video Frame manually for export
+                ctx.drawImage(App.video.el, 0, 0, w, h);
+            } else {
+                ctx.clearRect(0,0, w, h);
+            }
+
+            // Map Normalized to Canvas Pixels
+            
+            let ox = 0, oy = 0, scale = 1;
+            
+            if(App.isRecording) {
+                // Video fills canvas exactly
+                scale = 1; ox = 0; oy = 0;
+                // BUT, App.points were stored assuming object-fit: contain relative to screen.
+                // Actually, points are stored as Normalized (0-1) relative to the video frame itself.
+                // So:
+                const toPx = (nx, ny) => ({ x: nx * w, y: ny * h });
+                
+                if (App.step >= 4) {
+                    drawMeteorTrajectory(ctx, toPx);
+                    drawCanvasOverlay(ctx); // Draw the scoreboard
+                }
+            } else {
+                // Edit Mode: Need to simulate object-fit:contain mapping
+                const ratioW = w / App.video.w;
+                const ratioH = h / App.video.h;
+                scale = Math.min(ratioW, ratioH);
+                const vidW = App.video.w * scale;
+                const vidH = App.video.h * scale;
+                ox = (w - vidW) / 2;
+                oy = (h - vidH) / 2;
+                
+                const toScreen = (nx, ny) => ({ x: ox + nx * vidW, y: oy + ny * vidH });
+
+                if (App.step >= 4) {
+                    drawMeteorTrajectory(ctx, toScreen);
+                } else {
+                    drawSimpleTrajectory(ctx, toScreen);
+                    drawPoints(ctx, toScreen);
+                }
             }
         }
 
@@ -799,7 +982,6 @@
             ctx.fillStyle = '#ffffff'; 
             ctx.fill();
             
-            // White Glow
             const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 8);
             g.addColorStop(0, 'rgba(255,255,255,0.8)');
             g.addColorStop(1, 'rgba(255,255,255,0)');
