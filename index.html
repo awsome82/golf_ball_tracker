@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProTrax v35: High Quality Export</title>
+    <title>ProTrax v36: Timeline Master</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,7 +17,6 @@
     <style>
         body { font-family: 'Noto Sans KR', sans-serif; background-color: #0f172a; color: #f1f5f9; }
         
-        /* Video Container (Isolated) */
         .workspace {
             position: relative;
             background: #000;
@@ -41,15 +40,49 @@
             border: 1px solid #334155;
         }
 
-        /* Timeline Marker */
-        .timeline-container { position: relative; width: 100%; height: 20px; display: flex; align-items: center; }
-        #seek { z-index: 10; position: relative; width: 100%; }
-        .impact-marker {
-            position: absolute; top: 50%; width: 8px; height: 8px;
-            background: #ef4444; border: 1px solid white;
-            transform: translate(-50%, -50%) rotate(45deg);
-            z-index: 5; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+        /* --- Timeline Markers CSS --- */
+        .timeline-container { position: relative; width: 100%; height: 24px; display: flex; align-items: center; margin-bottom: 12px; }
+        #seek { z-index: 20; position: relative; width: 100%; height: 100%; margin: 0; opacity: 0.8; }
+        
+        #timelineMarkers {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* Clicks go through to slider */
+            z-index: 15;
         }
+
+        .t-marker {
+            position: absolute; top: 50%; transform: translate(-50%, -50%);
+            z-index: 10; transition: left 0.2s ease;
+            box-shadow: 0 0 4px rgba(0,0,0,0.8);
+        }
+
+        /* Impact: Red Diamond */
+        .tm-impact {
+            width: 10px; height: 10px; background: #ef4444; 
+            transform: translate(-50%, -50%) rotate(45deg);
+            border: 1px solid white;
+        }
+        /* Mid: Yellow Circle */
+        .tm-mid {
+            width: 8px; height: 8px; background: #facc15; 
+            border-radius: 50%;
+            border: 1px solid white;
+        }
+        /* Apex: Cyan Triangle (Clip path) */
+        .tm-apex {
+            width: 0; height: 0; 
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 12px solid #06b6d4; /* Cyan */
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 0 2px black);
+        }
+        /* Landing: Green Square */
+        .tm-landing {
+            width: 10px; height: 10px; background: #22c55e; 
+            border: 1px solid white;
+        }
+
 
         /* --- Broadcast Overlay (Preview) --- */
         #broadcastOverlay {
@@ -85,7 +118,7 @@
         <div class="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-golf-ball-tee text-white text-lg"></i>
-                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v35 HQ Export</span></span>
+                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v36 Timeline</span></span>
             </div>
             <button onclick="location.reload()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded hover:bg-slate-800 transition-colors">
                 <i class="fa-solid fa-arrows-rotate"></i> 초기화
@@ -110,14 +143,13 @@
                 </div>
 
                 <!-- Export Loading Overlay -->
-                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/90 hidden flex flex-col items-center justify-center text-white">
+                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/80 hidden flex flex-col items-center justify-center text-white">
                     <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <span class="font-bold text-lg">고화질 영상 렌더링 중...</span>
-                    <span class="text-xs text-slate-400 mt-1">끊김 방지를 위해 1.0배속으로 재생됩니다.</span>
-                    <span class="text-xs text-slate-500 mt-4">완료 시 자동 다운로드됩니다.</span>
+                    <span class="font-bold text-lg">영상 인코딩 중...</span>
+                    <span class="text-xs text-slate-400 mt-1">잠시만 기다려주세요 (오버레이 포함)</span>
                 </div>
 
-                <!-- Preview Overlay -->
+                <!-- Preview Overlay (HTML - For Display Only) -->
                 <div id="broadcastOverlay" class="hidden">
                     <div class="row-top">
                         <div class="box-name" id="dispName">Rory McIlroy</div>
@@ -144,9 +176,12 @@
 
             <!-- Separated Controls Area -->
             <div class="controls-area">
-                <div class="timeline-container mb-3">
+                <!-- Timeline Markers Container -->
+                <div class="timeline-container">
+                    <div id="timelineMarkers">
+                        <!-- Markers will be injected here via JS -->
+                    </div>
                     <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
-                    <div id="impactMarker" class="impact-marker"></div>
                 </div>
                 
                 <div class="flex justify-between items-center text-sm">
@@ -184,7 +219,7 @@
                             <i class="fa-solid fa-pen-to-square mr-1"></i> 방송 정보 입력
                         </button>
                         <button id="downloadBtn" class="col-span-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-all shadow-sm text-sm flex items-center justify-center">
-                            <i class="fa-solid fa-download mr-1"></i> 고화질 영상 저장 (Export)
+                            <i class="fa-solid fa-download mr-1"></i> 영상 저장 (Export)
                         </button>
                     </div>
 
@@ -276,7 +311,7 @@
             undo: document.getElementById('undoBtn'),
             stats: document.getElementById('statsPanel'),
             badge: document.getElementById('stepBadge'),
-            impactMarker: document.getElementById('impactMarker'),
+            timelineMarkers: document.getElementById('timelineMarkers'), // NEW Marker Container
             exportOverlay: document.getElementById('exportOverlay'),
             // Info
             infoPanel: document.getElementById('infoInputPanel'),
@@ -350,6 +385,39 @@
             requestAnimationFrame(animLoop);
         };
 
+        function updateTimelineMarkers() {
+            UI.timelineMarkers.innerHTML = ''; // Clear existing
+            
+            if (App.video.dur === 0) return;
+
+            App.points.forEach((p, idx) => {
+                const pct = (p.t / App.video.dur) * 100;
+                const marker = document.createElement('div');
+                marker.className = 't-marker';
+                marker.style.left = `${pct}%`;
+
+                if (p.type === 'start') {
+                    marker.classList.add('tm-impact');
+                    marker.title = "Impact";
+                } else if (p.type === 'mid') {
+                    // Check if this is the LAST mid point (which is Apex)
+                    const lastMidIdx = App.points.map(pt => pt.type).lastIndexOf('mid');
+                    if (idx === lastMidIdx) {
+                         marker.classList.add('tm-apex');
+                         marker.title = "Apex";
+                    } else {
+                         marker.classList.add('tm-mid');
+                         marker.title = "Mid";
+                    }
+                } else if (p.type === 'end') {
+                    marker.classList.add('tm-landing');
+                    marker.title = "Landing";
+                }
+                
+                UI.timelineMarkers.appendChild(marker);
+            });
+        }
+
         function adjustFontSize(element) {
             if (!element) return;
             element.style.fontSize = "";
@@ -374,13 +442,13 @@
             App.video.dur = App.video.el.duration;
             App.video.w = App.video.el.videoWidth;
             App.video.h = App.video.el.videoHeight;
-            // Set canvas size to match video resolution for export quality
             UI.canvas.width = App.video.w;
             UI.canvas.height = App.video.h;
             
             UI.seek.max = App.video.dur;
             setStep(1);
             render();
+            updateTimelineMarkers();
         }
 
         function togglePlay() {
@@ -426,10 +494,7 @@
             App.video.el.pause();
             App.video.el.currentTime = 0; 
 
-            // High Quality: 30FPS for stability
-            const canvasStream = UI.canvas.captureStream(30); 
-            
-            // Audio Capture
+            const canvasStream = UI.canvas.captureStream(60); 
             try {
                 let vStream = null;
                 if(App.video.el.captureStream) vStream = App.video.el.captureStream();
@@ -440,13 +505,9 @@
             } catch(e) {}
 
             App.chunks = [];
-            // Max Bitrate: 15 Mbps
-            const options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 15000000 };
-            
             try {
-                App.recorder = new MediaRecorder(canvasStream, options);
+                App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 15000000 });
             } catch(e) {
-                // Fallback if VP9/High Bitrate fails
                 try {
                     App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm', videoBitsPerSecond: 8000000 });
                 } catch(e2) {
@@ -687,11 +748,11 @@
                 App.points.pop();
                 if(App.points.length === 0) { 
                     setStep(1); 
-                    UI.impactMarker.style.opacity = 0; // Hide marker on undo
                 }
                 else if(App.points.length > 0 && App.points[App.points.length-1].type === 'start') setStep(2);
                 else updateUI();
                 render();
+                updateTimelineMarkers();
             }
         }
 
@@ -699,34 +760,33 @@
             if(App.step === 5 || App.isRecording) return;
 
             const rect = UI.canvas.getBoundingClientRect();
-            const ratioW = rect.width / App.video.w;
-            const ratioH = rect.height / App.video.h;
+            // In Edit Mode, we need to map clicks from visual rect to normalized space
+            // assuming object-fit: contain logic in render()
+            
+            const w = rect.width;
+            const h = rect.height;
+            const ratioW = w / App.video.w;
+            const ratioH = h / App.video.h;
             const scale = Math.min(ratioW, ratioH);
-            const w = App.video.w * scale;
-            const h = App.video.h * scale;
-            const offsetX = (rect.width - w) / 2;
-            const offsetY = (rect.height - h) / 2;
+            const vidW = App.video.w * scale;
+            const vidH = App.video.h * scale;
+            const ox = (w - vidW) / 2;
+            const oy = (h - vidH) / 2;
 
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
 
-            const nx = (mx - offsetX) / w;
-            const ny = (my - offsetY) / h;
+            const nx = (mx - ox) / vidW;
+            const ny = (my - oy) / vidH;
             const t = App.video.el.currentTime;
 
-            if(nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+            if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
 
             const pt = { t, nx, ny, type: '' };
 
             if(App.step === 1) {
                 pt.type = 'start';
                 App.points = [pt];
-                
-                // Show Marker
-                const pct = (t / App.video.dur) * 100;
-                UI.impactMarker.style.left = `${pct}%`;
-                UI.impactMarker.style.opacity = 1;
-
                 App.video.el.currentTime += 0.04; 
                 setStep(2);
             } else if(App.step === 2) {
@@ -744,6 +804,7 @@
                 setStep(4);
             }
             render();
+            updateTimelineMarkers();
         }
 
         function calculateSpline() {
