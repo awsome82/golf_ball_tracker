@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProTrax v36: Timeline Master</title>
+    <title>ProTrax v38: Timeline Fixed</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -40,51 +40,43 @@
             border: 1px solid #334155;
         }
 
-        /* --- Timeline Markers CSS --- */
-        .timeline-container { position: relative; width: 100%; height: 24px; display: flex; align-items: center; margin-bottom: 12px; }
-        #seek { z-index: 20; position: relative; width: 100%; height: 100%; margin: 0; opacity: 0.8; }
+        /* Timeline Marker */
+        .timeline-container { position: relative; width: 100%; height: 24px; display: flex; align-items: center; margin-bottom: 8px; }
+        #seek { z-index: 20; position: relative; width: 100%; height: 100%; margin: 0; opacity: 0.8; cursor: pointer; }
         
         #timelineMarkers {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; /* Clicks go through to slider */
+            pointer-events: none;
             z-index: 15;
         }
 
         .t-marker {
             position: absolute; top: 50%; transform: translate(-50%, -50%);
-            z-index: 10; transition: left 0.2s ease;
+            z-index: 10; transition: left 0.1s ease;
             box-shadow: 0 0 4px rgba(0,0,0,0.8);
         }
 
-        /* Impact: Red Diamond */
+        /* Marker Styles */
         .tm-impact {
             width: 10px; height: 10px; background: #ef4444; 
-            transform: translate(-50%, -50%) rotate(45deg);
-            border: 1px solid white;
+            transform: translate(-50%, -50%) rotate(45deg); border: 1px solid white;
         }
-        /* Mid: Yellow Circle */
         .tm-mid {
             width: 8px; height: 8px; background: #facc15; 
-            border-radius: 50%;
-            border: 1px solid white;
+            border-radius: 50%; border: 1px solid white;
         }
-        /* Apex: Cyan Triangle (Clip path) */
         .tm-apex {
             width: 0; height: 0; 
-            border-left: 6px solid transparent;
-            border-right: 6px solid transparent;
-            border-bottom: 12px solid #06b6d4; /* Cyan */
-            transform: translate(-50%, -50%);
-            filter: drop-shadow(0 0 2px black);
+            border-left: 6px solid transparent; border-right: 6px solid transparent;
+            border-bottom: 12px solid #06b6d4; 
+            transform: translate(-50%, -50%); filter: drop-shadow(0 0 1px black);
         }
-        /* Landing: Green Square */
         .tm-landing {
             width: 10px; height: 10px; background: #22c55e; 
             border: 1px solid white;
         }
 
-
-        /* --- Broadcast Overlay (Preview) --- */
+        /* Broadcast Overlay */
         #broadcastOverlay {
             position: absolute; top: 3%; left: 3%; z-index: 30; width: 20%; min-width: 130px; 
             container-type: inline-size; display: flex; flex-direction: column;
@@ -106,7 +98,7 @@
 
         /* Custom Slider */
         input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #ffffff; margin-top: -6px; box-shadow: 0 0 0 2px #3b82f6; transition: transform 0.1s; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #ffffff; margin-top: -6px; box-shadow: 0 0 0 2px #3b82f6; transition: transform 0.1s; position: relative; z-index: 30;}
         input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #475569; border-radius: 2px; }
     </style>
@@ -118,7 +110,7 @@
         <div class="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-golf-ball-tee text-white text-lg"></i>
-                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v36 Timeline</span></span>
+                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">v38 Timeline Fix</span></span>
             </div>
             <button onclick="location.reload()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded hover:bg-slate-800 transition-colors">
                 <i class="fa-solid fa-arrows-rotate"></i> 초기화
@@ -143,13 +135,14 @@
                 </div>
 
                 <!-- Export Loading Overlay -->
-                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/80 hidden flex flex-col items-center justify-center text-white">
+                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/90 hidden flex flex-col items-center justify-center text-white">
                     <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <span class="font-bold text-lg">영상 인코딩 중...</span>
-                    <span class="text-xs text-slate-400 mt-1">잠시만 기다려주세요 (오버레이 포함)</span>
+                    <span class="font-bold text-lg">최대 화질 렌더링 중...</span>
+                    <span class="text-xs text-slate-400 mt-1">25Mbps High Bitrate / Native Resolution</span>
+                    <span class="text-xs text-slate-500 mt-4">완료 시 자동 다운로드됩니다.</span>
                 </div>
 
-                <!-- Preview Overlay (HTML - For Display Only) -->
+                <!-- Preview Overlay -->
                 <div id="broadcastOverlay" class="hidden">
                     <div class="row-top">
                         <div class="box-name" id="dispName">Rory McIlroy</div>
@@ -176,10 +169,9 @@
 
             <!-- Separated Controls Area -->
             <div class="controls-area">
-                <!-- Timeline Markers Container -->
                 <div class="timeline-container">
                     <div id="timelineMarkers">
-                        <!-- Markers will be injected here via JS -->
+                        <!-- JS injects markers here -->
                     </div>
                     <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
                 </div>
@@ -219,7 +211,7 @@
                             <i class="fa-solid fa-pen-to-square mr-1"></i> 방송 정보 입력
                         </button>
                         <button id="downloadBtn" class="col-span-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-all shadow-sm text-sm flex items-center justify-center">
-                            <i class="fa-solid fa-download mr-1"></i> 영상 저장 (Export)
+                            <i class="fa-solid fa-download mr-1"></i> 최대 화질 영상 저장 (Max)
                         </button>
                     </div>
 
@@ -295,8 +287,9 @@
             file: document.getElementById('fileIn'),
             upload: document.getElementById('uploadUI'),
             canvas: document.getElementById('analysisCanvas'),
-            ctx: document.getElementById('analysisCanvas').getContext('2d', { willReadFrequently: true }),
+            ctx: document.getElementById('analysisCanvas').getContext('2d'),
             seek: document.getElementById('seek'),
+            timelineMarkers: document.getElementById('timelineMarkers'), // Timeline Markers
             time: document.getElementById('timeDisplay'),
             btnPlay: document.getElementById('btnPlay'),
             btnPrev: document.getElementById('btnPrevFrame'),
@@ -311,7 +304,6 @@
             undo: document.getElementById('undoBtn'),
             stats: document.getElementById('statsPanel'),
             badge: document.getElementById('stepBadge'),
-            timelineMarkers: document.getElementById('timelineMarkers'), // NEW Marker Container
             exportOverlay: document.getElementById('exportOverlay'),
             // Info
             infoPanel: document.getElementById('infoInputPanel'),
@@ -385,6 +377,7 @@
             requestAnimationFrame(animLoop);
         };
 
+        // --- Marker Update Logic ---
         function updateTimelineMarkers() {
             UI.timelineMarkers.innerHTML = ''; // Clear existing
             
@@ -400,9 +393,17 @@
                     marker.classList.add('tm-impact');
                     marker.title = "Impact";
                 } else if (p.type === 'mid') {
-                    // Check if this is the LAST mid point (which is Apex)
-                    const lastMidIdx = App.points.map(pt => pt.type).lastIndexOf('mid');
-                    if (idx === lastMidIdx) {
+                    // Check if this is the LAST mid point (Apex)
+                    // Find index of last mid point
+                    let lastMidIndex = -1;
+                    for(let i = App.points.length-1; i>=0; i--) {
+                        if(App.points[i].type === 'mid') {
+                            lastMidIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (idx === lastMidIndex) {
                          marker.classList.add('tm-apex');
                          marker.title = "Apex";
                     } else {
@@ -417,6 +418,7 @@
                 UI.timelineMarkers.appendChild(marker);
             });
         }
+
 
         function adjustFontSize(element) {
             if (!element) return;
@@ -442,6 +444,7 @@
             App.video.dur = App.video.el.duration;
             App.video.w = App.video.el.videoWidth;
             App.video.h = App.video.el.videoHeight;
+            // Set canvas size to match video resolution for export quality
             UI.canvas.width = App.video.w;
             UI.canvas.height = App.video.h;
             
@@ -495,6 +498,7 @@
             App.video.el.currentTime = 0; 
 
             const canvasStream = UI.canvas.captureStream(60); 
+            // Try to capture audio from video
             try {
                 let vStream = null;
                 if(App.video.el.captureStream) vStream = App.video.el.captureStream();
@@ -505,11 +509,14 @@
             } catch(e) {}
 
             App.chunks = [];
+            // Force High Bitrate for Quality
+            const options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 25000000 };
+            
             try {
-                App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 15000000 });
+                App.recorder = new MediaRecorder(canvasStream, options);
             } catch(e) {
                 try {
-                    App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm', videoBitsPerSecond: 8000000 });
+                    App.recorder = new MediaRecorder(canvasStream, { mimeType: 'video/webm', videoBitsPerSecond: 15000000 });
                 } catch(e2) {
                     App.recorder = new MediaRecorder(canvasStream);
                 }
@@ -532,7 +539,7 @@
                 const a = document.createElement('a');
                 a.style.display = 'none';
                 a.href = url;
-                a.download = 'protrax_export.webm';
+                a.download = 'protrax_analysis.webm';
                 document.body.appendChild(a);
                 a.click();
                 setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
@@ -541,11 +548,12 @@
 
         // --- Canvas Drawing for Overlay (Export) ---
         function drawCanvasOverlay(ctx) {
+            // Only draw if info exists
             if (UI.overlay.classList.contains('hidden')) return;
 
             const W = UI.canvas.width;
             const H = UI.canvas.height;
-            const scale = W / 1280; 
+            const scale = W / 1280; // Base scale on 720p width approx
 
             const boxW = 260 * scale;
             const top = 30 * scale;
@@ -557,11 +565,13 @@
             ctx.font = `bold ${24*scale}px "Teko", sans-serif`;
             ctx.textBaseline = 'middle';
 
-            // Row 1
+            // Row 1: Name & Score
+            // Name Box (White)
             ctx.fillStyle = 'white';
             ctx.fillRect(left, top, boxW * 0.75, row1H);
             ctx.fillStyle = '#111';
             ctx.textAlign = 'center';
+            // Auto fit name
             let fontSize = 24*scale;
             ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
             const nameText = UI.inputs.name.value.toUpperCase();
@@ -571,27 +581,31 @@
             }
             ctx.fillText(nameText, left + (boxW*0.75)/2, top + row1H/2 + (2*scale));
 
+            // Score Box (Red)
             ctx.fillStyle = '#dc2626';
             ctx.fillRect(left + boxW * 0.75, top, boxW * 0.25, row1H);
             ctx.fillStyle = 'white';
             ctx.font = `bold ${28*scale}px "Roboto", sans-serif`;
             ctx.fillText(UI.inputs.score.value, left + boxW * 0.75 + (boxW*0.25)/2, top + row1H/2 + (2*scale));
 
-            // Row 2
+            // Row 2: Stats & Shot
             const top2 = top + row1H;
             ctx.fillStyle = '#15803d';
             ctx.fillRect(left, top2, boxW, row2H);
             
+            // Stats Text
             ctx.fillStyle = 'white';
             ctx.textAlign = 'left';
             ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
             
+            // Hole
             const holeX = left + 10*scale;
             ctx.fillText(UI.inputs.hole.value, holeX, top2 + row2H/2);
             const holeW = ctx.measureText(UI.inputs.hole.value).width;
             ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
             ctx.fillText("TH", holeX + holeW + 2*scale, top2 + row2H/2);
 
+            // Dist
             ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
             const distX = holeX + holeW + 35*scale;
             ctx.fillText(UI.inputs.dist.value, distX, top2 + row2H/2);
@@ -599,6 +613,7 @@
             ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
             ctx.fillText("YDS", distX + distW + 2*scale, top2 + row2H/2);
 
+            // Shot Tiles
             const shotVal = parseInt(UI.inputs.shot.value);
             const tileS = 20*scale;
             const gap = 3*scale;
@@ -607,30 +622,33 @@
             for(let i=1; i<=4; i++) {
                 const x = startX + (i-1)*(tileS+gap);
                 const y = top2 + (row2H - tileS)/2;
+                
                 if(i === shotVal) {
                     ctx.fillStyle = 'white';
                     ctx.fillRect(x, y, tileS, tileS);
                     ctx.fillStyle = '#15803d';
                 } else {
-                    ctx.fillStyle = '#0f5f2c'; 
+                    ctx.fillStyle = '#0f5f2c'; // Darker green
                     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(x, y, tileS, tileS);
                     ctx.fillRect(x, y, tileS, tileS);
                     ctx.fillStyle = 'rgba(255,255,255,0.7)';
                 }
+                
                 ctx.font = `bold ${14*scale}px "Roboto", sans-serif`;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(i, x + tileS/2, y + tileS/2 + 1*scale);
             }
 
-            // Row 3
+            // Row 3: Course
             const top3 = top2 + row2H;
             ctx.fillStyle = '#facc15';
             ctx.fillRect(left, top3, boxW, row3H);
             ctx.fillStyle = '#111';
             ctx.textAlign = 'center';
+            
             fontSize = 16*scale;
             ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
             const courseText = UI.inputs.course.value.toUpperCase();
@@ -653,7 +671,7 @@
                 const isActive = (i+1 === App.step);
                 const isPast = (i+1 < App.step);
                 let colorClass = "text-slate-600 border-transparent"; 
-                if (isActive) colorClass = "text-red-400 border-red-500 font-bold";
+                if (isActive) colorClass = "text-white border-white font-bold";
                 else if (isPast) colorClass = "text-slate-400 border-slate-700 opacity-60";
                 el.className = `border-b-2 pb-2 transition-all ${colorClass}`;
                 if (isActive) {
@@ -748,6 +766,8 @@
                 App.points.pop();
                 if(App.points.length === 0) { 
                     setStep(1); 
+                    // Remove impact marker
+                    updateTimelineMarkers();
                 }
                 else if(App.points.length > 0 && App.points[App.points.length-1].type === 'start') setStep(2);
                 else updateUI();
@@ -760,51 +780,85 @@
             if(App.step === 5 || App.isRecording) return;
 
             const rect = UI.canvas.getBoundingClientRect();
-            // In Edit Mode, we need to map clicks from visual rect to normalized space
-            // assuming object-fit: contain logic in render()
+            // Match canvas size to visual size for sharp editing overlay
+            // However, for Export, we need native resolution mapping.
             
-            const w = rect.width;
-            const h = rect.height;
-            const ratioW = w / App.video.w;
-            const ratioH = h / App.video.h;
-            const scale = Math.min(ratioW, ratioH);
-            const vidW = App.video.w * scale;
-            const vidH = App.video.h * scale;
-            const ox = (w - vidW) / 2;
-            const oy = (h - vidH) / 2;
-
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-
-            const nx = (mx - ox) / vidW;
-            const ny = (my - oy) / vidH;
-            const t = App.video.el.currentTime;
-
-            if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
-
-            const pt = { t, nx, ny, type: '' };
-
-            if(App.step === 1) {
-                pt.type = 'start';
-                App.points = [pt];
-                App.video.el.currentTime += 0.04; 
-                setStep(2);
-            } else if(App.step === 2) {
-                if(t <= App.points[0].t) { alert("타격 시점보다 뒤의 시간을 선택하세요."); return; }
-                pt.type = 'mid';
-                App.points.push(pt);
-                App.points.sort((a,b) => a.t - b.t);
-                updateUI();
-            } else if(App.step === 3) {
-                const lastPt = App.points[App.points.length-1];
-                if(t <= lastPt.t) { alert("이전 점보다 뒤의 시간을 선택하세요."); return; }
-                pt.type = 'end';
-                App.points.push(pt);
-                calculateSpline();
-                setStep(4);
+            // Revert to NATIVE Resolution for consistent drawing
+            if(App.isRecording) {
+                UI.canvas.width = App.video.w;
+                UI.canvas.height = App.video.h;
+            } else {
+                // Editing mode: Canvas matches display size
+                UI.canvas.width = rect.width;
+                UI.canvas.height = rect.height;
             }
-            render();
-            updateTimelineMarkers();
+
+            const w = UI.canvas.width;
+            const h = UI.canvas.height;
+
+            // Map Normalized to Canvas Pixels
+            
+            let ox = 0, oy = 0, scale = 1;
+            
+            if(App.isRecording) {
+                // Video fills canvas exactly
+                scale = 1; ox = 0; oy = 0;
+                const toPx = (nx, ny) => ({ x: nx * w, y: ny * h });
+                
+                if (App.step >= 4) {
+                    // Draw Video First
+                    UI.ctx.drawImage(App.video.el, 0, 0, w, h);
+                    drawMeteorTrajectory(UI.ctx, toPx);
+                    drawCanvasOverlay(UI.ctx); 
+                }
+            } else {
+                // Edit Mode: Need to simulate object-fit:contain mapping
+                const ratioW = w / App.video.w;
+                const ratioH = h / App.video.h;
+                scale = Math.min(ratioW, ratioH);
+                const vidW = App.video.w * scale;
+                const vidH = App.video.h * scale;
+                ox = (w - vidW) / 2;
+                oy = (h - vidH) / 2;
+                
+                const toScreen = (nx, ny) => ({ x: ox + nx * vidW, y: oy + ny * vidH });
+
+                // Check click vs visual area
+                const rect = UI.canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                
+                // Inverse map to normalized
+                const normX = (mx - ox) / vidW;
+                const normY = (my - oy) / vidH;
+
+                if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
+
+                const t = App.video.el.currentTime;
+                const pt = { t, nx: normX, ny: normY, type: '' };
+
+                if (App.step === 1) {
+                    pt.type = 'start';
+                    App.points = [pt];
+                    App.video.el.currentTime += 0.04; 
+                    setStep(2);
+                } else if(App.step === 2) {
+                    if(t <= App.points[0].t) { alert("타격 시점보다 뒤의 시간을 선택하세요."); return; }
+                    pt.type = 'mid';
+                    App.points.push(pt);
+                    App.points.sort((a,b) => a.t - b.t);
+                    updateUI();
+                } else if(App.step === 3) {
+                    const lastPt = App.points[App.points.length-1];
+                    if(t <= lastPt.t) { alert("이전 점보다 뒤의 시간을 선택하세요."); return; }
+                    pt.type = 'end';
+                    App.points.push(pt);
+                    calculateSpline();
+                    setStep(4);
+                }
+                render();
+                updateTimelineMarkers();
+            }
         }
 
         function calculateSpline() {
@@ -1034,6 +1088,7 @@
             ctx.translate(lastPos.x, lastPos.y);
             ctx.rotate(angle);
             
+            // Rounded Arrow
             ctx.beginPath();
             ctx.moveTo(2, 0); 
             ctx.lineTo(-6, -4);
