@@ -101,6 +101,7 @@ window.onload = () => {
     });
     UI.undo.addEventListener('click', onUndo);
     UI.dlBtn.addEventListener('click', startExport);
+    document.getElementById('exportCancelBtn').addEventListener('click', () => { App.exportCancel = true; });
 
     window.addEventListener('resize', () => {
         render();
@@ -171,6 +172,7 @@ function loadVideo(e) {
     const f = e.target.files[0];
     if(!f) return;
     if(App.video.el.src.startsWith('blob:')) URL.revokeObjectURL(App.video.el.src);
+    App.video.file = f;
     App.video.el.src = URL.createObjectURL(f);
     App.video.el.muted = false; 
     UI.upload.classList.add('hidden');
@@ -259,7 +261,7 @@ function createRecorder(stream) {
     return null;
 }
 
-function startExport() {
+function startExportWebm() {
     if(App.isRecording) return;
     if(typeof MediaRecorder === 'undefined' || !UI.canvas.captureStream) {
         showToast('이 브라우저는 영상 저장을 지원하지 않습니다. 최신 Chrome/Edge를 사용하세요.');
@@ -292,6 +294,7 @@ function startExport() {
 
     App.recorder = recorder;
     App.chunks = [];
+    App.exportCancel = false;
     recorder.ondataavailable = e => { if(e.data.size > 0) App.chunks.push(e.data); };
     recorder.onstop = saveRecording;
     recorder.start();
