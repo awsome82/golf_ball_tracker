@@ -1,0 +1,827 @@
+const FRAME_STEP = 1 / 30; // 30fps 가정
+const EXPORT_FPS = 60;
+
+const App = {
+    step: 0, 
+    video: { el: null, dur: 0, w: 0, h: 0, playing: false },
+    points: [], 
+    splinePath: [],
+    lag: 0.1,
+    isRecording: false,
+    recorder: null,
+    chunks: []
+};
+
+const UI = {
+    file: document.getElementById('fileIn'),
+    upload: document.getElementById('uploadUI'),
+    canvas: document.getElementById('analysisCanvas'),
+    ctx: document.getElementById('analysisCanvas').getContext('2d'),
+    seek: document.getElementById('seek'),
+    timelineMarkers: document.getElementById('timelineMarkers'), // Timeline Markers
+    time: document.getElementById('timeDisplay'),
+    btnPlay: document.getElementById('btnPlay'),
+    btnPrev: document.getElementById('btnPrevFrame'),
+    btnNext: document.getElementById('btnNextFrame'),
+    steps: [1,2,3,4,5].map(n => document.getElementById(`step${n}`)),
+    title: document.getElementById('msgTitle'),
+    body: document.getElementById('msgBody'),
+    btn: document.getElementById('mainBtn'),
+    resultBtns: document.getElementById('resultBtns'),
+    dlBtn: document.getElementById('downloadBtn'),
+    addInfoBtn: document.getElementById('addInfoBtn'),
+    undo: document.getElementById('undoBtn'),
+    stats: document.getElementById('statsPanel'),
+    badge: document.getElementById('stepBadge'),
+    exportOverlay: document.getElementById('exportOverlay'),
+    // Info
+    infoPanel: document.getElementById('infoInputPanel'),
+    overlay: document.getElementById('broadcastOverlay'),
+    confirmInfo: document.getElementById('confirmInfoBtn'),
+    inputs: {
+        name: document.getElementById('inName'),
+        score: document.getElementById('inScore'),
+        hole: document.getElementById('inHole'),
+        dist: document.getElementById('inDist'),
+        shot: document.getElementById('inShot'),
+        course: document.getElementById('inCourse')
+    },
+    displays: {
+        name: document.getElementById('dispName'),
+        score: document.getElementById('dispScore'),
+        hole: document.getElementById('dispHole'),
+        dist: document.getElementById('dispDist'),
+        course: document.getElementById('dispCourse')
+    }
+};
+
+// --- Init ---
+window.onload = () => {
+    App.video.el = document.getElementById('videoElement');
+    UI.file.addEventListener('change', loadVideo);
+    
+    App.video.el.addEventListener('loadedmetadata', onVideoReady);
+    App.video.el.addEventListener('timeupdate', onTimeUpdate);
+    App.video.el.addEventListener('ended', onVideoEnded);
+    App.video.el.addEventListener('error', onVideoError);
+
+    UI.btnPlay.addEventListener('click', togglePlay);
+    UI.seek.addEventListener('input', (e) => {
+        if(App.isRecording) return;
+        App.video.el.currentTime = e.target.value;
+        render();
+    });
+    UI.seek.addEventListener('pointerdown', () => {
+        if(App.isRecording) return;
+        App.video.el.pause();
+        App.video.playing = false;
+        updatePlayIcon();
+    });
+
+    UI.btnPrev.addEventListener('click', () => !App.isRecording && frameStep(-FRAME_STEP));
+    UI.btnNext.addEventListener('click', () => !App.isRecording && frameStep(FRAME_STEP));
+
+    UI.canvas.addEventListener('pointerdown', onCanvasClick);
+    UI.btn.addEventListener('click', onMainAction);
+    UI.addInfoBtn.addEventListener('click', () => setStep(5));
+    UI.confirmInfo.addEventListener('click', () => {
+        updateOverlay();
+        const originalText = UI.confirmInfo.innerText;
+        UI.confirmInfo.innerHTML = '<i class="fa-solid fa-check mr-1"></i> 적용 완료!';
+        UI.confirmInfo.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+        UI.confirmInfo.classList.add('bg-green-600', 'hover:bg-green-500');
+        setTimeout(() => {
+            setStep(4); 
+            setTimeout(() => {
+                UI.confirmInfo.innerText = originalText;
+                UI.confirmInfo.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                UI.confirmInfo.classList.remove('bg-green-600', 'hover:bg-green-500');
+            }, 500);
+        }, 1000);
+    });
+    UI.undo.addEventListener('click', onUndo);
+    UI.dlBtn.addEventListener('click', startExport);
+
+    window.addEventListener('resize', () => {
+        render();
+        if(App.step===5 || !UI.overlay.classList.contains('hidden')) {
+            adjustFontSize(UI.displays.name);
+            adjustFontSize(UI.displays.course);
+        }
+    });
+    requestAnimationFrame(animLoop);
+};
+
+// --- Marker Update Logic ---
+function updateTimelineMarkers() {
+    UI.timelineMarkers.innerHTML = ''; // Clear existing
+    
+    if (App.video.dur === 0) return;
+
+    App.points.forEach((p, idx) => {
+        const pct = (p.t / App.video.dur) * 100;
+        const marker = document.createElement('div');
+        marker.className = 't-marker';
+        marker.style.left = `${pct}%`;
+
+        if (p.type === 'start') {
+            marker.classList.add('tm-impact');
+            marker.title = "Impact";
+        } else if (p.type === 'mid') {
+            // Check if this is the LAST mid point (Apex)
+            // Find index of last mid point
+            let lastMidIndex = -1;
+            for(let i = App.points.length-1; i>=0; i--) {
+                if(App.points[i].type === 'mid') {
+                    lastMidIndex = i;
+                    break;
+                }
+            }
+
+            if (idx === lastMidIndex) {
+                 marker.classList.add('tm-apex');
+                 marker.title = "Apex";
+            } else {
+                 marker.classList.add('tm-mid');
+                 marker.title = "Mid";
+            }
+        } else if (p.type === 'end') {
+            marker.classList.add('tm-landing');
+            marker.title = "Landing";
+        }
+        
+        UI.timelineMarkers.appendChild(marker);
+    });
+}
+
+
+function adjustFontSize(element) {
+    if (!element) return;
+    element.style.fontSize = "";
+    if (element.scrollWidth > element.clientWidth) {
+        let currentSize = parseFloat(window.getComputedStyle(element).fontSize);
+        while (element.scrollWidth > element.clientWidth && currentSize > 8) {
+            currentSize -= 0.5;
+            element.style.fontSize = currentSize + "px";
+        }
+    }
+}
+
+function loadVideo(e) {
+    const f = e.target.files[0];
+    if(!f) return;
+    if(App.video.el.src.startsWith('blob:')) URL.revokeObjectURL(App.video.el.src);
+    App.video.el.src = URL.createObjectURL(f);
+    App.video.el.muted = false; 
+    UI.upload.classList.add('hidden');
+}
+
+let toastTimer = null;
+function showToast(msg) {
+    let el = document.getElementById('toast');
+    if(!el) {
+        el = document.createElement('div');
+        el.id = 'toast';
+        el.setAttribute('role', 'alert');
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function onVideoError() {
+    UI.upload.classList.remove('hidden');
+    UI.file.value = '';
+    showToast('영상을 불러올 수 없습니다. 지원되는 영상 파일인지 확인하세요.');
+}
+
+function onVideoReady() {
+    App.video.dur = App.video.el.duration;
+    App.video.w = App.video.el.videoWidth;
+    App.video.h = App.video.el.videoHeight;
+    // Set canvas size to match video resolution for export quality
+    UI.canvas.width = App.video.w;
+    UI.canvas.height = App.video.h;
+    
+    UI.seek.max = App.video.dur;
+    setStep(1);
+    render();
+    updateTimelineMarkers();
+}
+
+function togglePlay() {
+    if(App.isRecording) return;
+    if(App.video.el.paused) {
+        App.video.el.play();
+        App.video.playing = true;
+    } else {
+        App.video.el.pause();
+        App.video.playing = false;
+    }
+    updatePlayIcon();
+}
+
+function updatePlayIcon() {
+    UI.btnPlay.innerHTML = App.video.playing ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+}
+
+function frameStep(dt) {
+    App.video.el.pause();
+    App.video.playing = false;
+    updatePlayIcon();
+    App.video.el.currentTime = Math.max(0, Math.min(App.video.dur, App.video.el.currentTime + dt));
+}
+
+function onTimeUpdate() {
+    if(App.video.playing) UI.seek.value = App.video.el.currentTime;
+    UI.time.textContent = App.video.el.currentTime.toFixed(2);
+}
+
+function onVideoEnded() {
+    App.video.playing = false;
+    updatePlayIcon();
+    if(App.isRecording) stopExport();
+}
+
+// --- Export Logic ---
+function createRecorder(stream) {
+    const candidates = [
+        { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 25000000 },
+        { mimeType: 'video/webm', videoBitsPerSecond: 15000000 },
+        {}
+    ];
+    for(const opts of candidates) {
+        if(opts.mimeType && !MediaRecorder.isTypeSupported(opts.mimeType)) continue;
+        try { return new MediaRecorder(stream, opts); } catch(e) { /* 다음 후보 시도 */ }
+    }
+    return null;
+}
+
+function startExport() {
+    if(App.isRecording) return;
+    if(typeof MediaRecorder === 'undefined' || !UI.canvas.captureStream) {
+        showToast('이 브라우저는 영상 저장을 지원하지 않습니다. 최신 Chrome/Edge를 사용하세요.');
+        return;
+    }
+
+    const canvasStream = UI.canvas.captureStream(EXPORT_FPS);
+    // 영상 오디오 트랙 캡처 (실패해도 무음으로 진행)
+    try {
+        const el = App.video.el;
+        const vStream = el.captureStream ? el.captureStream()
+            : (el.mozCaptureStream ? el.mozCaptureStream() : null);
+        if(vStream && vStream.getAudioTracks().length > 0) {
+            canvasStream.addTrack(vStream.getAudioTracks()[0]);
+        }
+    } catch(e) {
+        console.warn('오디오 캡처 실패, 무음으로 저장합니다.', e);
+    }
+
+    const recorder = createRecorder(canvasStream);
+    if(!recorder) {
+        showToast('영상 녹화기를 만들 수 없습니다.');
+        return;
+    }
+
+    App.isRecording = true;
+    UI.exportOverlay.classList.remove('hidden');
+    App.video.el.pause();
+    App.video.el.currentTime = 0;
+
+    App.recorder = recorder;
+    App.chunks = [];
+    recorder.ondataavailable = e => { if(e.data.size > 0) App.chunks.push(e.data); };
+    recorder.onstop = saveRecording;
+    recorder.start();
+    App.video.el.play();
+    App.video.playing = true;
+}
+
+function saveRecording() {
+    const blob = new Blob(App.chunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = 'protrax_analysis.webm';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+function stopExport() {
+    App.isRecording = false;
+    UI.exportOverlay.classList.add('hidden');
+    if(App.recorder && App.recorder.state !== 'inactive') App.recorder.stop();
+    render();
+}
+
+// --- Canvas Drawing for Overlay (Export) ---
+function drawCanvasOverlay(ctx) {
+    // Only draw if info exists
+    if (UI.overlay.classList.contains('hidden')) return;
+
+    const W = UI.canvas.width;
+    const H = UI.canvas.height;
+    const scale = W / 1280; // Base scale on 720p width approx
+
+    const boxW = 260 * scale;
+    const top = 30 * scale;
+    const left = 30 * scale;
+    const row1H = 50 * scale;
+    const row2H = 35 * scale;
+    const row3H = 30 * scale;
+
+    ctx.font = `bold ${24*scale}px "Teko", sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    // Row 1: Name & Score
+    // Name Box (White)
+    ctx.fillStyle = 'white';
+    ctx.fillRect(left, top, boxW * 0.75, row1H);
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center';
+    // Auto fit name
+    let fontSize = 24*scale;
+    ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+    const nameText = UI.inputs.name.value.toUpperCase();
+    while(ctx.measureText(nameText).width > (boxW*0.7) && fontSize > 10) {
+        fontSize--;
+        ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+    }
+    ctx.fillText(nameText, left + (boxW*0.75)/2, top + row1H/2 + (2*scale));
+
+    // Score Box (Red)
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(left + boxW * 0.75, top, boxW * 0.25, row1H);
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${28*scale}px "Roboto", sans-serif`;
+    ctx.fillText(UI.inputs.score.value, left + boxW * 0.75 + (boxW*0.25)/2, top + row1H/2 + (2*scale));
+
+    // Row 2: Stats & Shot
+    const top2 = top + row1H;
+    ctx.fillStyle = '#15803d';
+    ctx.fillRect(left, top2, boxW, row2H);
+    
+    // Stats Text
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'left';
+    ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
+    
+    // Hole
+    const holeX = left + 10*scale;
+    ctx.fillText(UI.inputs.hole.value, holeX, top2 + row2H/2);
+    const holeW = ctx.measureText(UI.inputs.hole.value).width;
+    ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
+    ctx.fillText("TH", holeX + holeW + 2*scale, top2 + row2H/2);
+
+    // Dist
+    ctx.font = `bold ${18*scale}px "Roboto", sans-serif`;
+    const distX = holeX + holeW + 35*scale;
+    ctx.fillText(UI.inputs.dist.value, distX, top2 + row2H/2);
+    const distW = ctx.measureText(UI.inputs.dist.value).width;
+    ctx.font = `400 ${12*scale}px "Roboto", sans-serif`;
+    ctx.fillText("YDS", distX + distW + 2*scale, top2 + row2H/2);
+
+    // Shot Tiles
+    const shotVal = parseInt(UI.inputs.shot.value);
+    const tileS = 20*scale;
+    const gap = 3*scale;
+    const startX = left + boxW - (4*tileS + 3*gap) - 10*scale;
+    
+    for(let i=1; i<=4; i++) {
+        const x = startX + (i-1)*(tileS+gap);
+        const y = top2 + (row2H - tileS)/2;
+        
+        if(i === shotVal) {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x, y, tileS, tileS);
+            ctx.fillStyle = '#15803d';
+        } else {
+            ctx.fillStyle = '#0f5f2c'; // Darker green
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, tileS, tileS);
+            ctx.fillRect(x, y, tileS, tileS);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        }
+        
+        ctx.font = `bold ${14*scale}px "Roboto", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(i, x + tileS/2, y + tileS/2 + 1*scale);
+    }
+
+    // Row 3: Course
+    const top3 = top2 + row2H;
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(left, top3, boxW, row3H);
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center';
+    
+    fontSize = 16*scale;
+    ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+    const courseText = UI.inputs.course.value.toUpperCase();
+    while(ctx.measureText(courseText).width > (boxW*0.9) && fontSize > 8) {
+        fontSize--;
+        ctx.font = `bold ${fontSize}px "Teko", sans-serif`;
+    }
+    ctx.fillText(courseText, left + boxW/2, top3 + row3H/2 + 1*scale);
+}
+
+// --- Logic ---
+function setStep(s) {
+    App.step = s;
+    updateUI();
+}
+
+function updateUI() {
+    UI.steps.forEach((el, i) => {
+        if(!el) return; 
+        const isActive = (i+1 === App.step);
+        const isPast = (i+1 < App.step);
+        let colorClass = "text-slate-600 border-transparent"; 
+        if (isActive) colorClass = "text-white border-white font-bold";
+        else if (isPast) colorClass = "text-slate-400 border-slate-700 opacity-60";
+        el.className = `border-b-2 pb-2 transition-all ${colorClass}`;
+        if (isActive) {
+            UI.badge.innerText = `STEP ${i+1}`;
+            UI.badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-900 uppercase tracking-wider";
+        }
+    });
+    
+    UI.undo.classList.add('hidden');
+    UI.btn.classList.remove('hidden');
+    UI.resultBtns.classList.add('hidden');
+    UI.infoPanel.classList.add('hidden');
+    
+    switch(App.step) {
+        case 1:
+            UI.title.innerText = "타격 시점 (Impact) 설정";
+            UI.body.innerText = "공이 타격되는 순간(Impact)의 위치를 정확히 클릭하세요.";
+            setBtn("위치 클릭 대기중", false);
+            break;
+        case 2:
+            UI.title.innerText = "중간 궤적 입력";
+            UI.body.innerHTML = "공이 날아가는 경로를 따라 1개 이상의 점을 클릭하세요.<br><b>마지막 점이 최고점(APEX)으로 기록됩니다.</b>";
+            const ptCount = App.points.filter(p => p.type === 'mid').length;
+            setBtn(ptCount >= 1 ? "다음: 낙하지점 설정" : "최소 1개 이상 입력", ptCount >= 1, "bg-slate-600 hover:bg-slate-500 text-white");
+            UI.undo.classList.remove('hidden');
+            break;
+        case 3:
+            UI.title.innerText = "낙하지점 (Landing Point) 설정";
+            UI.body.innerText = "공이 지면에 닿는 순간을 찾아 클릭하세요. 궤적의 끝점입니다.";
+            setBtn("위치 클릭 대기중", false);
+            UI.undo.classList.remove('hidden');
+            break;
+        case 4:
+            UI.title.innerText = "분석 완료";
+            UI.body.innerText = "화이트 혜성 궤적을 확인하세요. \n정보를 추가하고 영상을 저장할 수 있습니다.";
+            UI.btn.classList.add('hidden');
+            UI.resultBtns.classList.remove('hidden');
+            UI.resultBtns.className = "grid grid-cols-2 gap-2";
+            UI.stats.classList.remove('hidden');
+            break;
+        case 5:
+            UI.title.innerText = "방송 정보 입력";
+            UI.body.innerText = "화면 좌측 상단에 표시될 플레이어 및 코스 정보를 입력하세요.";
+            UI.btn.classList.add('hidden');
+            UI.stats.classList.add('hidden');
+            UI.infoPanel.classList.remove('hidden');
+            updateOverlay(); 
+            break;
+    }
+}
+
+function setBtn(txt, active, cls) {
+    UI.btn.innerText = txt;
+    UI.btn.disabled = !active;
+    UI.btn.className = active 
+        ? (cls || "w-full py-3.5 bg-white hover:bg-gray-200 text-slate-900 font-bold rounded-lg transition-all shadow-lg")
+        : "w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all";
+}
+
+function onMainAction() {
+    if(App.step === 2) {
+        setStep(3);
+        App.video.el.currentTime = Math.min(App.video.dur, App.video.el.currentTime + 1.5);
+    } else if(App.step === 4) {
+        // Replay not on main button anymore
+    }
+}
+
+function updateOverlay() {
+    UI.displays.name.innerText = UI.inputs.name.value;
+    UI.displays.score.innerText = UI.inputs.score.value;
+    UI.displays.hole.innerText = UI.inputs.hole.value;
+    UI.displays.dist.innerText = UI.inputs.dist.value;
+    UI.displays.course.innerText = UI.inputs.course.value;
+
+    const shot = parseInt(UI.inputs.shot.value);
+    for(let i=1; i<=4; i++) {
+        const el = document.getElementById(`shot${i}`);
+        if(i === shot) {
+            el.className = "shot-num shot-active";
+        } else {
+            el.className = "shot-num shot-inactive";
+        }
+    }
+    UI.overlay.classList.remove('hidden');
+    adjustFontSize(UI.displays.name);
+    adjustFontSize(UI.displays.course);
+}
+
+function onUndo() {
+    if(App.points.length > 0) {
+        App.points.pop();
+        if(App.points.length === 0) { 
+            setStep(1); 
+            // Remove impact marker
+            updateTimelineMarkers();
+        }
+        else if(App.points.length > 0 && App.points[App.points.length-1].type === 'start') setStep(2);
+        else updateUI();
+        render();
+        updateTimelineMarkers();
+    }
+}
+
+// 현재 모드(편집/내보내기)에 맞춰 캔버스 크기와 정규좌표→픽셀 변환 함수를 계산
+function getMapping() {
+    if(App.isRecording) {
+        // 내보내기: 원본 해상도, 영상이 캔버스를 가득 채움
+        UI.canvas.width = App.video.w;
+        UI.canvas.height = App.video.h;
+        const w = UI.canvas.width, h = UI.canvas.height;
+        return { w, h, vidW: w, vidH: h, ox: 0, oy: 0,
+                 toPx: (nx, ny) => ({ x: nx * w, y: ny * h }) };
+    }
+    // 편집: 캔버스는 화면 크기, 영상은 object-fit: contain
+    const rect = UI.canvas.getBoundingClientRect();
+    UI.canvas.width = rect.width;
+    UI.canvas.height = rect.height;
+    const w = rect.width, h = rect.height;
+    const scale = Math.min(w / App.video.w, h / App.video.h);
+    const vidW = App.video.w * scale;
+    const vidH = App.video.h * scale;
+    const ox = (w - vidW) / 2;
+    const oy = (h - vidH) / 2;
+    return { w, h, vidW, vidH, ox, oy,
+             toPx: (nx, ny) => ({ x: ox + nx * vidW, y: oy + ny * vidH }) };
+}
+
+function onCanvasClick(e) {
+    if(App.step === 5 || App.isRecording || !App.video.w) return;
+
+    const m = getMapping();
+    const rect = UI.canvas.getBoundingClientRect();
+    const normX = (e.clientX - rect.left - m.ox) / m.vidW;
+    const normY = (e.clientY - rect.top - m.oy) / m.vidH;
+    if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
+
+    const t = App.video.el.currentTime;
+    const pt = { t, nx: normX, ny: normY, type: '' };
+
+    if (App.step === 1) {
+        pt.type = 'start';
+        App.points = [pt];
+        App.video.el.currentTime += 0.04; 
+        setStep(2);
+    } else if(App.step === 2) {
+        if(t <= App.points[0].t) { showToast("타격 시점보다 뒤의 시간을 선택하세요."); return; }
+        pt.type = 'mid';
+        App.points.push(pt);
+        App.points = Spline.sortPoints(App.points);
+        updateUI();
+    } else if(App.step === 3) {
+        const lastPt = App.points[App.points.length-1];
+        if(t <= lastPt.t) { showToast("이전 점보다 뒤의 시간을 선택하세요."); return; }
+        pt.type = 'end';
+        App.points.push(pt);
+        calculateSpline();
+        setStep(4);
+    }
+    render();
+    updateTimelineMarkers();
+}
+
+function calculateSpline() {
+    App.points = Spline.sortPoints(App.points);
+    App.splinePath = Spline.computeSpline(App.points);
+    updateStats();
+}
+
+function updateStats() {
+    const st = Spline.computeStats(App.points, App.splinePath, App.video.h);
+    document.getElementById('statTime').innerText = st.flightTime.toFixed(2);
+    document.getElementById('statHeight').innerText = Math.round(st.apexHeightPx) + "px";
+    renderChart();
+}
+
+function animLoop() {
+    if(App.video.playing) {
+        UI.seek.value = App.video.el.currentTime;
+        UI.time.textContent = App.video.el.currentTime.toFixed(2);
+        render();
+    }
+    requestAnimationFrame(animLoop);
+}
+
+function render() {
+    if(!App.video.w) return;
+    const ctx = UI.ctx;
+    const m = getMapping();
+
+    if(App.isRecording) {
+        ctx.drawImage(App.video.el, 0, 0, m.w, m.h);
+        if (App.step >= 4) {
+            drawMeteorTrajectory(ctx, m.toPx);
+            drawCanvasOverlay(ctx); // 스코어보드
+        }
+    } else {
+        ctx.clearRect(0, 0, m.w, m.h);
+        if (App.step >= 4) {
+            drawMeteorTrajectory(ctx, m.toPx);
+        } else {
+            drawSimpleTrajectory(ctx, m.toPx);
+            drawPoints(ctx, m.toPx);
+        }
+    }
+}
+
+function drawPoints(ctx, toScreen) {
+    App.points.forEach((p, i) => {
+        const pos = toScreen(p.nx, p.ny);
+        let radius = 6;
+        let color = '#fbbf24'; 
+        let border = '#fff';
+        let label = '';
+        if(p.type === 'start') {
+            radius = 6; color = '#ffffff'; label = 'S';
+        } else if(p.type === 'mid') {
+            radius = 3; color = '#fbbf24'; 
+        } else if(p.type === 'end') {
+            radius = 6; color = 'rgba(255, 255, 255, 0.8)'; border = '#ffffff'; label = 'Landing Point'; 
+        }
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, radius, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = border;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if(label) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText(label, pos.x + radius + 4, pos.y + 4);
+        }
+    });
+}
+
+function drawSimpleTrajectory(ctx, toScreen) {
+    if(App.splinePath.length === 0) return;
+    ctx.beginPath();
+    const start = toScreen(App.splinePath[0].nx, App.splinePath[0].ny);
+    ctx.moveTo(start.x, start.y);
+    App.splinePath.forEach(p => ctx.lineTo(toScreen(p.nx, p.ny).x, toScreen(p.nx, p.ny).y));
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; 
+    ctx.lineWidth = 3; 
+    ctx.lineCap = 'round';
+    ctx.stroke();
+}
+
+function drawMeteorTrajectory(ctx, toScreen) {
+    if(App.splinePath.length === 0) return;
+
+    const now = App.video.el.currentTime;
+    const drawLimit = now - App.lag; 
+    const activePts = App.splinePath.filter(p => p.t <= drawLimit);
+    const screenPts = activePts.map(p => toScreen(p.nx, p.ny));
+
+    if(screenPts.length > 1) {
+        const ARROW_LEN = 6; 
+        let distAcc = 0;
+        let cutIndex = screenPts.length - 1;
+        let cutPoint = screenPts[screenPts.length - 1];
+        
+        for (let i = screenPts.length - 1; i > 0; i--) {
+            const p1 = screenPts[i];
+            const p2 = screenPts[i-1];
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const d = Math.sqrt(dx*dx + dy*dy);
+            if (distAcc + d >= ARROW_LEN) {
+                const remaining = ARROW_LEN - distAcc; 
+                const ratio = remaining / d; 
+                cutPoint = {
+                    x: p1.x + (p2.x - p1.x) * ratio,
+                    y: p1.y + (p2.y - p1.y) * ratio
+                };
+                cutIndex = i - 1;
+                break;
+            }
+            distAcc += d;
+            cutIndex = i - 1;
+        }
+
+        const totalPoints = cutIndex + 1;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 3; 
+
+        if(totalPoints > 1) {
+            for(let i = 0; i < totalPoints - 1; i++) {
+                const ptA = screenPts[i];
+                const ptB = screenPts[i+1];
+                const alpha = Math.pow(i / totalPoints, 2); 
+                ctx.beginPath();
+                ctx.moveTo(ptA.x, ptA.y);
+                ctx.lineTo(ptB.x, ptB.y);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; 
+                ctx.stroke();
+            }
+            const ptLast = screenPts[totalPoints-1];
+            ctx.beginPath();
+            ctx.moveTo(ptLast.x, ptLast.y);
+            ctx.lineTo(cutPoint.x, cutPoint.y);
+            ctx.strokeStyle = `rgba(255, 255, 255, 1.0)`; 
+            ctx.stroke();
+        }
+        drawArrow(ctx, activePts, toScreen);
+    }
+}
+
+function drawArrow(ctx, activePts, toScreen) {
+    if (activePts.length < 2) return;
+    const lastPt = activePts[activePts.length-1];
+    const prevPt = activePts[activePts.length-2];
+    const lastPos = toScreen(lastPt.nx, lastPt.ny);
+    const prevPos = toScreen(prevPt.nx, prevPt.ny);
+    
+    const angle = Math.atan2(lastPos.y - prevPos.y, lastPos.x - prevPos.x);
+    
+    ctx.save();
+    ctx.translate(lastPos.x, lastPos.y);
+    ctx.rotate(angle);
+    
+    // Rounded Arrow
+    ctx.beginPath();
+    ctx.moveTo(2, 0); 
+    ctx.lineTo(-6, -4);
+    ctx.quadraticCurveTo(-4, 0, -6, 4);
+    ctx.closePath();
+    
+    ctx.fillStyle = '#ffffff'; 
+    ctx.fill();
+    
+    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 8);
+    g.addColorStop(0, 'rgba(255,255,255,0.8)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// --- Chart ---
+let chart = null;
+function renderChart() {
+    if(chart) chart.destroy();
+    const ctx = document.getElementById('chart').getContext('2d');
+    const startY = App.points[0].ny;
+    const data = App.splinePath.map(p => (startY - p.ny) * 100); 
+    const labels = App.splinePath.map(p => (p.t - App.points[0].t).toFixed(1));
+
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Height',
+                data: data,
+                borderColor: '#ffffff', // White Chart Line
+                backgroundColor: (context) => {
+                    const ctx = context.chart.ctx;
+                    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+                    gradient.addColorStop(0, 'rgba(255,255,255,0.5)');
+                    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+                    return gradient;
+                },
+                fill: true,
+                pointRadius: 0,
+                tension: 0.4, 
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: {display: false}, tooltip: {mode: 'index', intersect: false} },
+            scales: { x: {display: false}, y: {display: false} }
+        }
+    });
+}
