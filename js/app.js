@@ -244,7 +244,8 @@ function onTimeUpdate() {
 function onVideoEnded() {
     App.video.playing = false;
     updatePlayIcon();
-    if(App.isRecording) stopExport();
+    // webm 실시간 녹화 중일 때만 종료 (MP4 내보내기는 자체 루프로 제어)
+    if(App.isRecording && App.recorder && App.recorder.state === 'recording') stopExport();
 }
 
 // --- Export Logic ---
@@ -571,6 +572,7 @@ function getMapping() {
     const vidH = App.video.h * scale;
     const ox = (w - vidW) / 2;
     const oy = (h - vidH) / 2;
+    App.displayVidW = vidW; // 내보내기 시 화면과 같은 비율로 선 굵기를 맞추기 위해 기억
     return { w, h, vidW, vidH, ox, oy,
              toPx: (nx, ny) => ({ x: ox + nx * vidW, y: oy + ny * vidH }) };
 }
@@ -640,7 +642,12 @@ function render() {
     if(App.isRecording) {
         ctx.drawImage(App.video.el, 0, 0, m.w, m.h);
         if (App.step >= 4) {
-            drawMeteorTrajectory(ctx, m.toPx);
+            // 화면(웹)에서 보이는 것과 같은 비율이 되도록, 화면 좌표계로 그린 뒤 원본 해상도로 확대
+            const k = App.displayVidW ? m.w / App.displayVidW : 1;
+            ctx.save();
+            ctx.scale(k, k);
+            drawMeteorTrajectory(ctx, (nx, ny) => ({ x: nx * m.w / k, y: ny * m.h / k }));
+            ctx.restore();
             drawCanvasOverlay(ctx); // 스코어보드
         }
     } else {

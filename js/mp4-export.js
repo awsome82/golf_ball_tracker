@@ -6,11 +6,24 @@
 const AUDIO_SAMPLE_RATE = 48000;
 const H264_CODECS = ['avc1.640033', 'avc1.640028', 'avc1.4d0028', 'avc1.42001f'];
 
+/** seek가 실제로 끝나고(seeking=false) 프레임이 준비될 때까지 대기.
+ *  이전 seek의 'seeked' 이벤트를 자기 것으로 착각하면 이전/빈 프레임이 캡처된다. */
 function seekTo(t) {
     return new Promise(resolve => {
         const v = App.video.el;
-        if (Math.abs(v.currentTime - t) < 1e-4 && v.readyState >= 2) { resolve(); return; }
-        v.addEventListener('seeked', () => resolve(), { once: true });
+        const settled = () => !v.seeking && v.readyState >= 2 && Math.abs(v.currentTime - t) < 0.05;
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            v.removeEventListener('seeked', onSeeked);
+            clearTimeout(timer);
+            resolve();
+        };
+        const onSeeked = () => { if (settled()) finish(); };
+        const timer = setTimeout(finish, 3000); // 안전장치
+        v.addEventListener('seeked', onSeeked);
+        if (Math.abs(v.currentTime - t) < 1e-4 && settled()) { finish(); return; }
         v.currentTime = t;
     });
 }
@@ -28,21 +41,24 @@ function detectFps() {
             done = true;
             v.pause();
             v.muted = prevMuted;
-            v.currentTime = prevTime;
             const d = [];
             for (let i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
             d.sort((a, b) => a - b);
             const median = d.length ? d[Math.floor(d.length / 2)] : 0;
-            resolve(ExportUtils.snapFps(median > 0 ? 1 / median : NaN));
+            // 중앙값 근처 간격만 평균내 ms 단위 반올림 오차(33/34ms)를 줄인다
+            const near = d.filter(x => x > 0 && x < median * 1.5);
+            const mean = near.length ? near.reduce((a, b) => a + b, 0) / near.length : 0;
+            const fps = ExportUtils.snapFps(mean > 0 ? 1 / mean : NaN);
+            seekTo(prevTime).then(() => resolve(fps)); // 되돌리는 seek 완료까지 대기
         };
         const cb = (now, meta) => {
             times.push(meta.mediaTime);
-            if (times.length >= 12) finish(); else v.requestVideoFrameCallback(cb);
+            if (times.length >= 30) finish(); else v.requestVideoFrameCallback(cb);
         };
         v.muted = true;
         v.requestVideoFrameCallback(cb);
         v.play().catch(finish);
-        setTimeout(finish, 1500);
+        setTimeout(finish, 2500);
     });
 }
 
@@ -153,7 +169,7 @@ async function startExportMp4() {
 
         const muxer = new Mp4Muxer.Muxer({
             target: new Mp4Muxer.ArrayBufferTarget(),
-            video: { codec: 'avc', width, height, frameRate: fps },
+            video: { codec: 'avc', width, height, frameRate: Math.round(fps) },
             audio: audioInfo ? { codec: audioInfo.muxCodec, numberOfChannels: audioInfo.channels, sampleRate: audioInfo.audio.sampleRate } : undefined,
             fastStart: 'in-memory'
         });
@@ -174,7 +190,7 @@ async function startExportMp4() {
         for (let i = 0; i < total; i++) {
             if (App.exportCancel) throw new Error('cancelled');
             if (encodeError) throw encodeError;
-            await seekTo(Math.min(ExportUtils.frameTime(i, fps), App.video.dur - 0.001));
+            await seekTo(Math.min(ExportUtils.seekTimeForFrame(i, fps), App.video.dur - 0.001));
             render();
             octx.drawImage(UI.canvas, 0, 0, width, height);
             const frame = new VideoFrame(out, { timestamp: ExportUtils.frameTimestampUs(i, fps), duration: Math.round(1e6 / fps) });
