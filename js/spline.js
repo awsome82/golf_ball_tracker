@@ -52,7 +52,24 @@
         };
     }
 
-    const api = { computeSpline, computeStats, sortPoints, STEPS_PER_SEGMENT };
+    /** 시각 t에서의 경로 위치를 샘플 사이 선형 보간으로 구한다 (범위 밖은 양 끝으로 고정).
+     *  반환: { nx, ny, t, index } — index는 t 이하인 마지막 샘플의 위치 */
+    function pointAt(path, t) {
+        if (!path.length) return null;
+        const first = path[0], last = path[path.length - 1];
+        if (t <= first.t) return { nx: first.nx, ny: first.ny, t: first.t, index: 0 };
+        if (t >= last.t) return { nx: last.nx, ny: last.ny, t: last.t, index: path.length - 1 };
+        let lo = 0, hi = path.length - 1;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (path[mid].t <= t) lo = mid; else hi = mid;
+        }
+        const a = path[lo], b = path[hi];
+        const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+        return { nx: a.nx + (b.nx - a.nx) * f, ny: a.ny + (b.ny - a.ny) * f, t, index: lo };
+    }
+
+    const api = { computeSpline, computeStats, sortPoints, pointAt, STEPS_PER_SEGMENT };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.Spline = api;
 })(typeof window !== 'undefined' ? window : globalThis);

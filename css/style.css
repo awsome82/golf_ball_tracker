@@ -98,3 +98,8 @@ input[type=range]::-moz-range-track { width: 100%; height: 4px; background: #475
 
 /* 드롭다운 목록 색상 명시 (브라우저 기본값에 따라 글자가 안 보이는 경우 방지) */
 select option { background: #0f172a; color: #ffffff; }
+
+/* 트레이서 색 프리셋 */
+.tracer-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #475569; cursor: pointer; padding: 0; }
+.tracer-swatch[aria-pressed="true"] { border-color: #ffffff; box-shadow: 0 0 0 2px #3b82f6; }
+#tracerColor { width: 28px; height: 28px; padding: 0; border: none; background: transparent; cursor: pointer; }

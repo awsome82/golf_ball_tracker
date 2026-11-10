@@ -37,3 +37,13 @@ test('통계: 비행시간과 최고점 높이', () => {
     assert.strictEqual(s.flightTime, 3);
     assert.ok(s.apexHeightPx >= 500 - 1e-6); // (0.8-0.3)*1000 이상
 });
+
+test('pointAt: 샘플 사이 보간과 범위 밖 고정', () => {
+    const { pointAt } = require('../js/spline.js');
+    const path = [{ t: 0, nx: 0, ny: 0 }, { t: 1, nx: 1, ny: 2 }, { t: 3, nx: 3, ny: 2 }];
+    assert.deepStrictEqual(pointAt(path, 0.5), { nx: 0.5, ny: 1, t: 0.5, index: 0 });
+    assert.deepStrictEqual(pointAt(path, 2), { nx: 2, ny: 2, t: 2, index: 1 });
+    assert.deepStrictEqual(pointAt(path, -1), { nx: 0, ny: 0, t: 0, index: 0 });
+    assert.deepStrictEqual(pointAt(path, 9), { nx: 3, ny: 2, t: 3, index: 2 });
+    assert.strictEqual(pointAt([], 1), null);
+});
