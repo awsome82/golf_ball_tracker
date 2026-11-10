@@ -58,3 +58,10 @@ test('distanceAt: 0에서 캐리까지 단조 증가, 보정값 적용', () => {
     assert.ok(Math.abs(B.distanceAt(f, f.time / 2, 150) - B.distanceAt(f, f.time / 2) * 150 / f.carry) < 1e-9);
     assert.strictEqual(B.distanceAt(null, 1), 0);
 });
+
+test('index.html의 클럽 옵션이 CLUBS와 일치', () => {
+    const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+    const select = html.match(/<select id="clubSelect"[\s\S]*?<\/select>/)[0];
+    const opts = [...select.matchAll(/<option value="([^"]+)"[^>]*>([^<]+)<\/option>/g)].map(m => [m[1], m[2]]);
+    assert.deepStrictEqual(opts, B.CLUBS.map(c => [c.id, c.name]));
+});

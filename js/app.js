@@ -8,6 +8,7 @@ const App = {
     splinePath: [],
     flight: null,      // Ballistics.fitFlight 결과 (거리 추정)
     carryOverride: 0,  // 사용자가 입력한 실제 캐리(m), 0이면 추정값 사용
+    tracer: { width: 5, color: '#ffffff' }, // 트레이서 선 굵기(화면 px 기준)와 색
     lag: 0.1,
     isRecording: false,
     recorder: null,
@@ -102,11 +103,11 @@ window.onload = () => {
         }, 1000);
     });
     UI.undo.addEventListener('click', onUndo);
-    const clubSel = document.getElementById('clubSelect');
-    Ballistics.CLUBS.forEach(c => clubSel.add(new Option(c.name, c.id)));
+    const clubSel = document.getElementById('clubSelect'); // 옵션은 index.html에 정의
     const onFlightInput = () => { if(App.splinePath.length) { updateFlight(); render(); } };
     clubSel.addEventListener('change', onFlightInput);
     document.getElementById('carryInput').addEventListener('input', onFlightInput);
+    initTracerControls();
     UI.dlBtn.addEventListener('click', startExport);
     document.getElementById('exportCancelBtn').addEventListener('click', () => { App.exportCancel = true; });
 
@@ -720,78 +721,130 @@ function drawPoints(ctx, toScreen) {
     });
 }
 
+// --- 트레이서 스타일 (굵기·색) ---
+const TRACER_KEY = 'protrax.tracer';
+
+function initTracerControls() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(TRACER_KEY) || 'null');
+        if(saved && saved.width >= 2 && saved.width <= 12) App.tracer.width = saved.width;
+        if(saved && /^#[0-9a-f]{6}$/i.test(saved.color)) App.tracer.color = saved.color;
+    } catch(e) { /* 저장소를 쓸 수 없으면 기본값 사용 */ }
+
+    const widthIn = document.getElementById('tracerWidth');
+    const colorIn = document.getElementById('tracerColor');
+    const swatches = Array.from(document.querySelectorAll('.tracer-swatch'));
+    const sync = () => {
+        widthIn.value = App.tracer.width;
+        document.getElementById('tracerWidthVal').innerText = App.tracer.width;
+        colorIn.value = App.tracer.color;
+        swatches.forEach(b => b.setAttribute('aria-pressed',
+            String(b.dataset.color.toLowerCase() === App.tracer.color.toLowerCase())));
+    };
+    const apply = () => {
+        sync();
+        try { localStorage.setItem(TRACER_KEY, JSON.stringify(App.tracer)); } catch(e) { /* 무시 */ }
+        if(!App.isRecording) render();
+    };
+    widthIn.addEventListener('input', () => { App.tracer.width = parseFloat(widthIn.value); apply(); });
+    colorIn.addEventListener('input', () => { App.tracer.color = colorIn.value; apply(); });
+    swatches.forEach(b => {
+        b.style.background = b.dataset.color;
+        b.addEventListener('click', () => { App.tracer.color = b.dataset.color; apply(); });
+    });
+    sync();
+}
+
 function drawSimpleTrajectory(ctx, toScreen) {
     if(App.splinePath.length === 0) return;
+    ctx.save();
     ctx.beginPath();
-    const start = toScreen(App.splinePath[0].nx, App.splinePath[0].ny);
-    ctx.moveTo(start.x, start.y);
-    App.splinePath.forEach(p => ctx.lineTo(toScreen(p.nx, p.ny).x, toScreen(p.nx, p.ny).y));
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; 
-    ctx.lineWidth = 3; 
+    App.splinePath.forEach((p, i) => {
+        const q = toScreen(p.nx, p.ny);
+        if(i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+    });
+    ctx.strokeStyle = App.tracer.color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = App.tracer.width;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.stroke();
+    ctx.restore();
 }
+
+// 트레이서 전용 레이어 (구간별 투명도를 겹침 없이 합성하기 위한 오프스크린 캔버스)
+let tracerLayer = null;
+const TRACER_BANDS = 64;
 
 function drawMeteorTrajectory(ctx, toScreen) {
     if(App.splinePath.length === 0) return;
 
-    const now = App.video.el.currentTime;
-    const drawLimit = now - App.lag; 
-    const activePts = App.splinePath.filter(p => p.t <= drawLimit);
-    const screenPts = activePts.map(p => toScreen(p.nx, p.ny));
-
-    if(screenPts.length > 1) {
-        const ARROW_LEN = 6; 
-        let distAcc = 0;
-        let cutIndex = screenPts.length - 1;
-        let cutPoint = screenPts[screenPts.length - 1];
-        
-        for (let i = screenPts.length - 1; i > 0; i--) {
-            const p1 = screenPts[i];
-            const p2 = screenPts[i-1];
-            const dx = p1.x - p2.x;
-            const dy = p1.y - p2.y;
-            const d = Math.sqrt(dx*dx + dy*dy);
-            if (distAcc + d >= ARROW_LEN) {
-                const remaining = ARROW_LEN - distAcc; 
-                const ratio = remaining / d; 
-                cutPoint = {
-                    x: p1.x + (p2.x - p1.x) * ratio,
-                    y: p1.y + (p2.y - p1.y) * ratio
-                };
-                cutIndex = i - 1;
-                break;
-            }
-            distAcc += d;
-            cutIndex = i - 1;
+    const drawLimit = App.video.el.currentTime - App.lag;
+    // 머리 위치를 현재 시각에 맞춰 보간 → 매 프레임 균일하게 전진
+    const head = Spline.pointAt(App.splinePath, drawLimit);
+    if(drawLimit > App.splinePath[0].t) {
+        const pts = App.splinePath.slice(0, head.index + 1).map(p => toScreen(p.nx, p.ny));
+        const headPos = toScreen(head.nx, head.ny);
+        const lastPt = pts[pts.length - 1];
+        if(Math.hypot(headPos.x - lastPt.x, headPos.y - lastPt.y) > 0.01) pts.push(headPos);
+        if(pts.length > 1) {
+            drawTracerLine(ctx, pts);
+            drawArrow(ctx, pts[pts.length - 2], pts[pts.length - 1]);
         }
-
-        const totalPoints = cutIndex + 1;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = 3; 
-
-        if(totalPoints > 1) {
-            for(let i = 0; i < totalPoints - 1; i++) {
-                const ptA = screenPts[i];
-                const ptB = screenPts[i+1];
-                const alpha = Math.pow(i / totalPoints, 2); 
-                ctx.beginPath();
-                ctx.moveTo(ptA.x, ptA.y);
-                ctx.lineTo(ptB.x, ptB.y);
-                ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; 
-                ctx.stroke();
-            }
-            const ptLast = screenPts[totalPoints-1];
-            ctx.beginPath();
-            ctx.moveTo(ptLast.x, ptLast.y);
-            ctx.lineTo(cutPoint.x, cutPoint.y);
-            ctx.strokeStyle = `rgba(255, 255, 255, 1.0)`; 
-            ctx.stroke();
-        }
-        drawArrow(ctx, activePts, toScreen);
     }
     drawDistanceLabel(ctx, toScreen, drawLimit);
+}
+
+// 꼬리는 투명, 머리는 불투명한 선. 구간(band)마다 앞 구간과 겹치는 부분을 지운 뒤 그려
+// 반투명 선이 겹쳐 구슬처럼 보이는 현상을 없앤다.
+function drawTracerLine(ctx, pts) {
+    const cv = ctx.canvas;
+    if(!tracerLayer) tracerLayer = document.createElement('canvas');
+    if(tracerLayer.width !== cv.width || tracerLayer.height !== cv.height) {
+        tracerLayer.width = cv.width;
+        tracerLayer.height = cv.height;
+    }
+    const L = tracerLayer.getContext('2d');
+    L.setTransform(1, 0, 0, 1, 0, 0);
+    L.clearRect(0, 0, cv.width, cv.height);
+    L.setTransform(ctx.getTransform());
+    // 끝을 평평하게(butt) 해야 지우는 영역이 앞 구간을 파먹지 않는다
+    L.lineCap = 'butt';
+    L.lineJoin = 'round';
+    L.strokeStyle = App.tracer.color;
+
+    const w = App.tracer.width;
+    const n = pts.length - 1; // 선분 수
+    const bands = Math.min(TRACER_BANDS, n);
+    for(let b = 0; b < bands; b++) {
+        // 앞 구간과 선분 하나만큼 겹치게 시작해 경계의 실금을 없앤다 (겹친 부분은 아래에서 지우고 다시 그림)
+        const from = Math.max(0, Math.floor(b * n / bands) - 1);
+        const to = Math.floor((b + 1) * n / bands);
+        if(to <= from) continue;
+        L.beginPath();
+        L.moveTo(pts[from].x, pts[from].y);
+        for(let i = from + 1; i <= to; i++) L.lineTo(pts[i].x, pts[i].y);
+
+        const alpha = Math.pow((b + 1) / bands, 2);
+        // 1) 이 구간이 덮을 영역을 먼저 지움 (앞 구간과 겹치는 부분 제거)
+        L.globalCompositeOperation = 'destination-out';
+        L.globalAlpha = 1;
+        L.lineWidth = w * 2.4;
+        L.stroke();
+        // 2) 옅은 글로우 + 본선
+        L.globalCompositeOperation = 'source-over';
+        L.globalAlpha = alpha * 0.22;
+        L.stroke();
+        L.globalAlpha = alpha;
+        L.lineWidth = w;
+        L.stroke();
+    }
+    L.globalAlpha = 1;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(tracerLayer, 0, 0);
+    ctx.restore();
 }
 
 // 트레이서 머리(공) 옆에 실시간 거리, 낙하 후에는 최종 캐리 표시
@@ -803,8 +856,7 @@ function drawDistanceLabel(ctx, toScreen, headTime) {
     const landed = headTime >= end.t;
 
     // 머리 위치: 스플라인에서 headTime 이하의 마지막 점
-    let head = App.splinePath[0];
-    for(const p of App.splinePath) { if(p.t <= headTime) head = p; else break; }
+    const head = Spline.pointAt(App.splinePath, headTime);
     const pos = toScreen(head.nx, head.ny);
 
     // 클릭한 체공 시간과 모델 시간을 맞춰 0 → 캐리로 증가
@@ -853,31 +905,27 @@ function drawDistanceLabel(ctx, toScreen, headTime) {
     ctx.restore();
 }
 
-function drawArrow(ctx, activePts, toScreen) {
-    if (activePts.length < 2) return;
-    const lastPt = activePts[activePts.length-1];
-    const prevPt = activePts[activePts.length-2];
-    const lastPos = toScreen(lastPt.nx, lastPt.ny);
-    const prevPos = toScreen(prevPt.nx, prevPt.ny);
-    
+function drawArrow(ctx, prevPos, lastPos) {
     const angle = Math.atan2(lastPos.y - prevPos.y, lastPos.x - prevPos.x);
-    
+    const k = App.tracer.width / 3; // 선 굵기에 비례
+
     ctx.save();
     ctx.translate(lastPos.x, lastPos.y);
     ctx.rotate(angle);
-    
+    ctx.scale(k, k);
+
     // Rounded Arrow
     ctx.beginPath();
-    ctx.moveTo(2, 0); 
+    ctx.moveTo(2, 0);
     ctx.lineTo(-6, -4);
     ctx.quadraticCurveTo(-4, 0, -6, 4);
     ctx.closePath();
-    
-    ctx.fillStyle = '#ffffff'; 
+    ctx.fillStyle = App.tracer.color;
     ctx.fill();
-    
+
+    // 머리 글로우 (가운데는 흰색으로 밝게)
     const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 8);
-    g.addColorStop(0, 'rgba(255,255,255,0.8)');
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.beginPath();
