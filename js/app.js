@@ -74,7 +74,12 @@ window.onload = () => {
         App.video.el.currentTime = e.target.value;
         render();
     });
+    const endDrag = () => { App.seekDragging = false; };
+    UI.seek.addEventListener('pointerup', endDrag);
+    UI.seek.addEventListener('pointercancel', endDrag);
+    UI.seek.addEventListener('change', endDrag);
     UI.seek.addEventListener('pointerdown', () => {
+        App.seekDragging = true;
         if(App.isRecording) return;
         App.video.el.pause();
         App.video.playing = false;
@@ -90,15 +95,13 @@ window.onload = () => {
     UI.confirmInfo.addEventListener('click', () => {
         updateOverlay();
         const originalText = UI.confirmInfo.innerText;
-        UI.confirmInfo.innerHTML = '<i class="fa-solid fa-check mr-1"></i> 적용 완료!';
-        UI.confirmInfo.classList.remove('bg-blue-600', 'hover:bg-blue-500');
-        UI.confirmInfo.classList.add('bg-green-600', 'hover:bg-green-500');
+        UI.confirmInfo.innerHTML = '<i class="fa-solid fa-check"></i> 적용 완료';
+        UI.confirmInfo.classList.add('is-done');
         setTimeout(() => {
             setStep(4); 
             setTimeout(() => {
                 UI.confirmInfo.innerText = originalText;
-                UI.confirmInfo.classList.add('bg-blue-600', 'hover:bg-blue-500');
-                UI.confirmInfo.classList.remove('bg-green-600', 'hover:bg-green-500');
+                UI.confirmInfo.classList.remove('is-done');
             }, 500);
         }, 1000);
     });
@@ -245,7 +248,8 @@ function frameStep(dt) {
 }
 
 function onTimeUpdate() {
-    if(App.video.playing) UI.seek.value = App.video.el.currentTime;
+    // 프레임 이동·seek 때도 슬라이더가 따라오게 함 (드래그 중에는 건드리지 않음)
+    if(!App.seekDragging) UI.seek.value = App.video.el.currentTime;
     UI.time.textContent = App.video.el.currentTime.toFixed(2);
 }
 
@@ -454,14 +458,11 @@ function updateUI() {
         if(!el) return; 
         const isActive = (i+1 === App.step);
         const isPast = (i+1 < App.step);
-        let colorClass = "text-slate-600 border-transparent"; 
-        if (isActive) colorClass = "text-white border-white font-bold";
-        else if (isPast) colorClass = "text-slate-400 border-slate-700 opacity-60";
-        el.className = `border-b-2 pb-2 transition-all ${colorClass}`;
+        el.className = 'step' + (isActive ? ' is-active' : isPast ? ' is-done' : '');
         if (isActive) {
-            UI.badge.innerText = `STEP ${i+1}`;
-            UI.badge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-white text-slate-900 uppercase tracking-wider";
-        }
+            el.setAttribute('aria-current', 'step');
+            UI.badge.innerText = `STEP ${i+1} / ${UI.steps.length}`;
+        } else el.removeAttribute('aria-current');
     });
     
     UI.undo.classList.add('hidden');
@@ -479,7 +480,7 @@ function updateUI() {
             UI.title.innerText = "중간 궤적 입력";
             UI.body.innerHTML = "공이 날아가는 경로를 따라 1개 이상의 점을 클릭하세요.<br><b>마지막 점이 최고점(APEX)으로 기록됩니다.</b>";
             const ptCount = App.points.filter(p => p.type === 'mid').length;
-            setBtn(ptCount >= 1 ? "다음: 낙하지점 설정" : "최소 1개 이상 입력", ptCount >= 1, "bg-slate-600 hover:bg-slate-500 text-white");
+            setBtn(ptCount >= 1 ? "다음: 낙하지점 설정" : "최소 1개 이상 입력", ptCount >= 1);
             UI.undo.classList.remove('hidden');
             break;
         case 3:
@@ -493,7 +494,6 @@ function updateUI() {
             UI.body.innerText = "궤적을 따라 비거리(m)가 표시됩니다. 클럽을 선택하면 추정이 정확해집니다.\n정보를 추가하고 영상을 저장할 수 있습니다.";
             UI.btn.classList.add('hidden');
             UI.resultBtns.classList.remove('hidden');
-            UI.resultBtns.className = "grid grid-cols-2 gap-2";
             UI.stats.classList.remove('hidden');
             break;
         case 5:
@@ -507,12 +507,9 @@ function updateUI() {
     }
 }
 
-function setBtn(txt, active, cls) {
+function setBtn(txt, active) {
     UI.btn.innerText = txt;
     UI.btn.disabled = !active;
-    UI.btn.className = active 
-        ? (cls || "w-full py-3.5 bg-white hover:bg-gray-200 text-slate-900 font-bold rounded-lg transition-all shadow-lg")
-        : "w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all";
 }
 
 function onMainAction() {

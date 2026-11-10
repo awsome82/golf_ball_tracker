@@ -16,7 +16,7 @@ https://awsome82.github.io/golf_ball_tracker/
 ```bash
 python3 -m http.server 8000   # 후 http://localhost:8000 접속
 ```
-`index.html`을 직접 열어도 동작합니다. 인터넷 연결 필요(Tailwind, Chart.js, Font Awesome, Google Fonts CDN).
+`index.html`을 직접 열어도 동작합니다. 인터넷 연결 필요(Chart.js, mp4-muxer, Font Awesome, Google Fonts CDN).
 
 ## 구조
 ```
