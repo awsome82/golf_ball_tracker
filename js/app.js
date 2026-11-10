@@ -6,6 +6,8 @@ const App = {
     video: { el: null, dur: 0, w: 0, h: 0, playing: false },
     points: [], 
     splinePath: [],
+    flight: null,      // Ballistics.fitFlight 결과 (거리 추정)
+    carryOverride: 0,  // 사용자가 입력한 실제 캐리(m), 0이면 추정값 사용
     lag: 0.1,
     isRecording: false,
     recorder: null,
@@ -100,6 +102,11 @@ window.onload = () => {
         }, 1000);
     });
     UI.undo.addEventListener('click', onUndo);
+    const clubSel = document.getElementById('clubSelect');
+    Ballistics.CLUBS.forEach(c => clubSel.add(new Option(c.name, c.id)));
+    const onFlightInput = () => { if(App.splinePath.length) { updateFlight(); render(); } };
+    clubSel.addEventListener('change', onFlightInput);
+    document.getElementById('carryInput').addEventListener('input', onFlightInput);
     UI.dlBtn.addEventListener('click', startExport);
     document.getElementById('exportCancelBtn').addEventListener('click', () => { App.exportCancel = true; });
 
@@ -482,7 +489,7 @@ function updateUI() {
             break;
         case 4:
             UI.title.innerText = "분석 완료";
-            UI.body.innerText = "화이트 혜성 궤적을 확인하세요. \n정보를 추가하고 영상을 저장할 수 있습니다.";
+            UI.body.innerText = "궤적을 따라 비거리(m)가 표시됩니다. 클럽을 선택하면 추정이 정확해집니다.\n정보를 추가하고 영상을 저장할 수 있습니다.";
             UI.btn.classList.add('hidden');
             UI.resultBtns.classList.remove('hidden');
             UI.resultBtns.className = "grid grid-cols-2 gap-2";
@@ -621,8 +628,31 @@ function calculateSpline() {
 function updateStats() {
     const st = Spline.computeStats(App.points, App.splinePath, App.video.h);
     document.getElementById('statTime').innerText = st.flightTime.toFixed(2);
-    document.getElementById('statHeight').innerText = Math.round(st.apexHeightPx) + "px";
+    updateFlight();
     renderChart();
+}
+
+// 체공 시간과 선택한 클럽으로 거리를 추정하고 통계 패널을 갱신
+function updateFlight() {
+    if(App.points.length < 2) return;
+    const T = App.points[App.points.length-1].t - App.points[0].t;
+    App.flight = Ballistics.fitFlight(T, document.getElementById('clubSelect').value);
+    App.carryOverride = parseFloat(document.getElementById('carryInput').value) || 0;
+    const f = App.flight;
+    const set = (id, txt) => { document.getElementById(id).innerText = txt; };
+    if(!f) { ['statCarry','statSpeed','statHeight'].forEach(id => set(id, '--')); return; }
+    set('statCarry', Math.round(carryMeters()) + ' m');
+    // 볼스피드와 높이는 모델 추정값 (실제 캐리를 입력해도 바뀌지 않음)
+    set('statSpeed', Math.round(f.speed * 3.6) + ' km/h');
+    set('statHeight', Math.round(f.apex) + ' m');
+    document.getElementById('carryNote').innerText = App.carryOverride > 0
+        ? '입력한 실제 캐리 기준으로 표시합니다.'
+        : (f.clamped ? '체공 시간이 모델 범위를 벗어나 정확도가 낮습니다.' : '체공 시간과 클럽으로 추정한 값입니다.');
+}
+
+function carryMeters() {
+    if(!App.flight) return 0;
+    return App.carryOverride > 0 ? App.carryOverride : App.flight.carry;
 }
 
 function animLoop() {
@@ -761,6 +791,66 @@ function drawMeteorTrajectory(ctx, toScreen) {
         }
         drawArrow(ctx, activePts, toScreen);
     }
+    drawDistanceLabel(ctx, toScreen, drawLimit);
+}
+
+// 트레이서 머리(공) 옆에 실시간 거리, 낙하 후에는 최종 캐리 표시
+function drawDistanceLabel(ctx, toScreen, headTime) {
+    if(!App.flight || App.points.length < 2) return;
+    const start = App.points[0], end = App.points[App.points.length-1];
+    const elapsed = headTime - start.t;
+    if(elapsed <= 0) return;
+    const landed = headTime >= end.t;
+
+    // 머리 위치: 스플라인에서 headTime 이하의 마지막 점
+    let head = App.splinePath[0];
+    for(const p of App.splinePath) { if(p.t <= headTime) head = p; else break; }
+    const pos = toScreen(head.nx, head.ny);
+
+    // 클릭한 체공 시간과 모델 시간을 맞춰 0 → 캐리로 증가
+    const flightT = end.t - start.t;
+    const frac = Math.min(1, elapsed / flightT);
+    const meters = Math.round(Ballistics.distanceAt(App.flight, frac * App.flight.time, App.carryOverride));
+    const value = String(meters);
+
+    const FONT = '"Teko", "Noto Sans KR", sans-serif';
+    const H = 26, PAD = 8;
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 23px ${FONT}`;
+    const wValue = ctx.measureText(value).width;
+    ctx.font = `600 14px ${FONT}`;
+    const wUnit = ctx.measureText('M').width;
+    const wTag = landed ? ctx.measureText('CARRY').width + 6 : 0;
+    const W = PAD * 2 + wTag + wValue + 3 + wUnit;
+
+    // 영상 영역 안에 머물도록 위치 보정
+    const tl = toScreen(0, 0), br = toScreen(1, 1);
+    let x = pos.x + 12, y = pos.y - H - 8;
+    if(x + W > br.x - 4) x = pos.x - W - 12;
+    if(y < tl.y + 4) y = pos.y + 10;
+    x = Math.max(tl.x + 4, x);
+
+    ctx.fillStyle = landed ? 'rgba(21, 128, 61, 0.92)' : 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x, y, W, H, 4); else ctx.rect(x, y, W, H);
+    ctx.fill();
+
+    let cx = x + PAD;
+    const cy = y + H / 2 + 1.5;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffffff';
+    if(landed) {
+        ctx.font = `600 14px ${FONT}`;
+        ctx.fillText('CARRY', cx, cy);
+        cx += wTag;
+    }
+    ctx.font = `700 23px ${FONT}`;
+    ctx.fillText(value, cx, cy);
+    ctx.font = `600 14px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText('M', cx + wValue + 3, cy + 1.5);
+    ctx.restore();
 }
 
 function drawArrow(ctx, activePts, toScreen) {
