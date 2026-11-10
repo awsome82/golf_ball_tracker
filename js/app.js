@@ -102,8 +102,7 @@ window.onload = () => {
         }, 1000);
     });
     UI.undo.addEventListener('click', onUndo);
-    const clubSel = document.getElementById('clubSelect');
-    Ballistics.CLUBS.forEach(c => clubSel.add(new Option(c.name, c.id)));
+    const clubSel = document.getElementById('clubSelect'); // 옵션은 index.html에 정의
     const onFlightInput = () => { if(App.splinePath.length) { updateFlight(); render(); } };
     clubSel.addEventListener('change', onFlightInput);
     document.getElementById('carryInput').addEventListener('input', onFlightInput);

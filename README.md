@@ -29,6 +29,9 @@ js/mp4-export.js  # MP4 오프라인 인코딩 (WebCodecs + mp4-muxer)
 tests/            # node --test "tests/*.test.js"
 ```
 
+## 배포
+GitHub Pages로 배포됩니다. 배포 후 변경이 안 보이면 강력 새로고침(`Ctrl/Cmd + Shift + R`)하세요. 파일을 수정해 배포할 때는 `index.html`의 `?v=` 값을 올려 브라우저 캐시를 무효화합니다.
+
 ## 테스트
 ```bash
 node --test "tests/*.test.js"

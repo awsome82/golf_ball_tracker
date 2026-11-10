@@ -95,3 +95,6 @@ input[type=range]::-moz-range-track { width: 100%; height: 4px; background: #475
     transition: opacity 0.2s, transform 0.2s; max-width: 90vw;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 드롭다운 목록 색상 명시 (브라우저 기본값에 따라 글자가 안 보이는 경우 방지) */
+select option { background: #0f172a; color: #ffffff; }
