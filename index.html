@@ -5,55 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProTrax - Golf Ball Tracer</title>
 
-    <!-- Tailwind CSS (Play CDN) -->
-    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Teko:wght@600;700&family=Roboto:wght@700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=6">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Teko:wght@500;600;700&family=Roboto:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=7">
 </head>
-<body class="flex flex-col min-h-screen selection:bg-slate-500 selection:text-white">
+<body>
 
-    <!-- Navbar -->
-    <nav class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 z-30 sticky top-0">
-        <div class="max-w-7xl mx-auto px-4 h-14 flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-golf-ball-tee text-white text-lg"></i>
-                <span class="font-bold text-lg tracking-wide">ProTrax <span class="text-slate-400 text-xs font-normal">Golf Ball Tracer</span></span>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <span class="brand-name">PROTRAX</span>
+                <span class="brand-sub">Golf Ball Tracer</span>
             </div>
-            <button onclick="location.reload()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded hover:bg-slate-800 transition-colors">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="location.reload()">
                 <i class="fa-solid fa-arrows-rotate"></i> 초기화
             </button>
         </div>
-    </nav>
+    </header>
 
-    <!-- Main Content -->
-    <main class="flex-grow p-4 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+    <main class="layout">
+
         <!-- Left: Workspace -->
-        <div class="lg:col-span-2 flex flex-col gap-2">
-            <div class="workspace group" id="videoWrapper">
+        <section class="stage">
+            <div class="workspace" id="videoWrapper">
                 <!-- Upload UI -->
-                <div id="uploadUI" class="absolute inset-0 z-40 bg-slate-900/95 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-4 rounded-xl cursor-pointer hover:border-white hover:bg-slate-800/50 transition-all group-hover:scale-[1.01]" onclick="document.getElementById('fileIn').click()">
-                    <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400 group-hover:text-white group-hover:bg-slate-700 transition-all">
-                        <i class="fa-solid fa-cloud-arrow-up text-3xl"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-slate-200">영상 파일 선택</h3>
-                    <p class="text-sm text-slate-500 mt-2">MP4, MOV (소리 포함)</p>
+                <div id="uploadUI" class="dropzone" role="button" tabindex="0" onclick="document.getElementById('fileIn').click()">
+                    <div class="dropzone-icon"><i class="fa-solid fa-arrow-up-from-bracket"></i></div>
+                    <h2 class="dropzone-title">골프 영상을 올려 주세요</h2>
+                    <p class="dropzone-sub">클릭해서 파일 선택 · MP4, MOV</p>
+                    <p class="dropzone-note">영상은 브라우저 안에서만 처리되며 서버로 전송되지 않습니다.</p>
                     <input type="file" id="fileIn" accept="video/*" class="hidden">
                 </div>
 
                 <!-- Export Loading Overlay -->
-                <div id="exportOverlay" class="absolute inset-0 z-50 bg-black/90 hidden flex flex-col items-center justify-center text-white">
-                    <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <span class="font-bold text-lg">최대 화질 MP4 렌더링 중...</span>
-                    <span class="text-xs text-slate-400 mt-1">H.264 + AAC / 원본 해상도 / 프레임 단위 인코딩</span>
-                    <span id="exportProgress" class="text-sm font-mono text-white mt-3"></span>
-                    <span class="text-xs text-slate-500 mt-4">완료 시 자동 다운로드됩니다.</span>
-                    <button id="exportCancelBtn" class="mt-3 px-4 py-1.5 text-xs border border-slate-600 text-slate-300 rounded hover:bg-slate-800">취소</button>
+                <div id="exportOverlay" class="export-overlay hidden">
+                    <div class="spinner"></div>
+                    <span class="export-title">MP4 렌더링 중</span>
+                    <span id="exportProgress" class="export-progress"></span>
+                    <span class="export-sub">H.264 + AAC · 원본 해상도 · 완료되면 자동으로 저장됩니다.</span>
+                    <button id="exportCancelBtn" type="button" class="btn btn-ghost btn-sm">취소</button>
                 </div>
 
                 <!-- Preview Overlay -->
@@ -81,89 +76,105 @@
                 <canvas id="analysisCanvas"></canvas>
             </div>
 
-            <!-- Separated Controls Area -->
-            <div class="controls-area">
+            <!-- Transport -->
+            <div class="transport">
                 <div class="timeline-container">
-                    <div id="timelineMarkers">
-                        <!-- JS injects markers here -->
-                    </div>
-                    <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+                    <div id="timelineMarkers"></div>
+                    <input type="range" id="seek" min="0" max="100" step="0.01" value="0" aria-label="재생 위치">
                 </div>
-                
-                <div class="flex justify-between items-center text-sm">
-                    <div class="flex items-center gap-4">
-                        <button id="btnPlay" class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white text-slate-300 transition-colors shadow"><i class="fa-solid fa-play"></i></button>
-                        <div class="flex flex-col">
-                            <span id="timeDisplay" class="font-mono text-white text-sm font-bold">00:00.00</span>
-                            <span class="text-[10px] text-slate-400">Total Duration</span>
-                        </div>
+                <div class="transport-row">
+                    <div class="transport-left">
+                        <button id="btnPlay" type="button" class="play-btn" aria-label="재생/일시정지"><i class="fa-solid fa-play"></i></button>
+                        <div class="timecode"><span id="timeDisplay">0.00</span><span class="timecode-unit">초</span></div>
                     </div>
-                    <div class="flex gap-2">
-                        <button id="btnPrevFrame" class="px-3 py-1.5 bg-slate-700 rounded hover:bg-slate-600 text-xs text-white border border-slate-600 transition-colors" title="-1 Frame"><i class="fa-solid fa-chevron-left mr-1"></i> Frame</button>
-                        <button id="btnNextFrame" class="px-3 py-1.5 bg-slate-700 rounded hover:bg-slate-600 text-xs text-white border border-slate-600 transition-colors" title="+1 Frame">Frame <i class="fa-solid fa-chevron-right ml-1"></i></button>
+                    <div class="transport-right">
+                        <button id="btnPrevFrame" type="button" class="btn btn-ghost btn-sm" title="한 프레임 뒤로"><i class="fa-solid fa-chevron-left"></i> 프레임</button>
+                        <button id="btnNextFrame" type="button" class="btn btn-ghost btn-sm" title="한 프레임 앞으로">프레임 <i class="fa-solid fa-chevron-right"></i></button>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Right: Dashboard -->
-        <div class="flex flex-col gap-4">
-            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700 min-h-[200px] flex flex-col justify-between" id="instructionPanel">
-                <div>
-                    <div class="flex items-center gap-2 mb-3">
-                        <span id="stepBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 uppercase tracking-wider">Step 1</span>
-                    </div>
-                    <h2 class="text-xl font-bold text-white mb-2" id="msgTitle">준비됨</h2>
-                    <p class="text-slate-400 text-sm leading-relaxed whitespace-pre-line" id="msgBody">영상을 업로드하면 분석을 시작합니다.</p>
-                </div>
-                
-                <div class="flex flex-col gap-2 mt-4">
-                    <button id="mainBtn" class="w-full py-3.5 bg-slate-700 text-slate-500 font-bold rounded-lg cursor-not-allowed transition-all shadow-sm" disabled>대기 중...</button>
-                    
-                    <div class="grid grid-cols-2 gap-2 hidden" id="resultBtns">
-                        <button id="addInfoBtn" class="col-span-2 py-3 bg-green-700 hover:bg-green-600 text-white font-bold rounded-lg transition-all shadow-sm text-sm">
-                            <i class="fa-solid fa-pen-to-square mr-1"></i> 방송 정보 입력
+        <aside class="side">
+            <ol class="stepper" aria-label="진행 단계">
+                <li id="step1" class="step is-active"><span class="step-n">1</span><span class="step-t">타격</span></li>
+                <li id="step2" class="step"><span class="step-n">2</span><span class="step-t">궤적</span></li>
+                <li id="step3" class="step"><span class="step-n">3</span><span class="step-t">낙하</span></li>
+                <li id="step4" class="step"><span class="step-n">4</span><span class="step-t">결과</span></li>
+                <li id="step5" class="step"><span class="step-n">5</span><span class="step-t">정보</span></li>
+            </ol>
+
+            <div class="card guide" id="instructionPanel">
+                <span id="stepBadge" class="eyebrow">시작</span>
+                <h1 class="guide-title" id="msgTitle">준비됨</h1>
+                <p class="guide-body" id="msgBody">영상을 업로드하면 분석을 시작합니다.</p>
+
+                <div class="guide-actions">
+                    <button id="mainBtn" type="button" class="btn btn-primary btn-block" disabled>대기 중...</button>
+
+                    <div class="stack hidden" id="resultBtns">
+                        <button id="downloadBtn" type="button" class="btn btn-primary btn-block">
+                            <i class="fa-solid fa-download"></i> MP4로 저장
                         </button>
-                        <button id="downloadBtn" class="col-span-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-all shadow-sm text-sm flex items-center justify-center">
-                            <i class="fa-solid fa-download mr-1"></i> 최대 화질 MP4 저장
+                        <button id="addInfoBtn" type="button" class="btn btn-secondary btn-block">
+                            <i class="fa-solid fa-pen-to-square"></i> 방송 정보 입력
                         </button>
                     </div>
 
-                    <button id="undoBtn" class="w-full py-2 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 hidden text-xs transition-colors"><i class="fa-solid fa-rotate-left mr-1"></i> 이전 포인트 취소</button>
+                    <button id="undoBtn" type="button" class="btn btn-ghost btn-block btn-sm hidden"><i class="fa-solid fa-rotate-left"></i> 이전 포인트 취소</button>
                 </div>
             </div>
 
             <!-- Broadcast Info Input Panel -->
-            <div id="infoInputPanel" class="hidden bg-slate-800 p-5 rounded-lg shadow-lg border border-slate-700 animate-in fade-in slide-in-from-right-4">
-                <h3 class="text-sm font-bold text-white mb-4"><i class="fa-solid fa-pen mr-2"></i>중계 정보 입력</h3>
-                <div class="space-y-3">
-                    <div>
-                        <label class="text-xs text-slate-400 font-bold">플레이어</label>
-                        <input type="text" id="inName" value="Rory McIlroy" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
+            <div id="infoInputPanel" class="card hidden">
+                <h2 class="card-title">중계 정보</h2>
+                <div class="form">
+                    <div class="field">
+                        <label for="inName">플레이어</label>
+                        <input type="text" id="inName" value="Rory McIlroy">
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label class="text-xs text-slate-400 font-bold">홀</label><input type="number" id="inHole" value="16" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
-                        <div><label class="text-xs text-slate-400 font-bold">거리</label><input type="number" id="inDist" value="455" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
+                    <div class="field-row">
+                        <div class="field"><label for="inHole">홀</label><input type="number" id="inHole" value="16"></div>
+                        <div class="field"><label for="inDist">거리 (yd)</label><input type="number" id="inDist" value="455"></div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label class="text-xs text-slate-400 font-bold">스코어</label><input type="text" id="inScore" value="-9" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-red-400 font-bold text-sm"></div>
-                        <div><label class="text-xs text-slate-400 font-bold">샷</label><input type="number" id="inShot" value="1" min="1" max="4" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm"></div>
+                    <div class="field-row">
+                        <div class="field"><label for="inScore">스코어</label><input type="text" id="inScore" value="-9"></div>
+                        <div class="field"><label for="inShot">샷</label><input type="number" id="inShot" value="1" min="1" max="4"></div>
                     </div>
-                    <div>
-                        <label class="text-xs text-slate-400 font-bold">골프장</label>
-                        <input type="text" id="inCourse" value="Augusta National Golf Club" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
+                    <div class="field">
+                        <label for="inCourse">골프장</label>
+                        <input type="text" id="inCourse" value="Augusta National Golf Club">
                     </div>
-                    <button id="confirmInfoBtn" class="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-sm transition-colors">적용하기</button>
+                    <button id="confirmInfoBtn" type="button" class="btn btn-primary btn-block">적용하기</button>
                 </div>
             </div>
 
             <!-- Stats -->
-            <div id="statsPanel" class="hidden flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label for="clubSelect" class="text-xs text-slate-400 font-bold">클럽</label>
-                            <select id="clubSelect" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
+            <div id="statsPanel" class="stack-lg hidden">
+                <div class="card">
+                    <div class="hero-stat">
+                        <span class="stat-label-sm">캐리 (추정)</span>
+                        <div class="hero-value" id="statCarry">--</div>
+                    </div>
+                    <div class="stat-row">
+                        <div class="stat">
+                            <span class="stat-label-sm">체공 시간</span>
+                            <div class="stat-value"><span id="statTime">0.0</span> s</div>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label-sm">볼 스피드</span>
+                            <div class="stat-value" id="statSpeed">--</div>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label-sm">최고 높이</span>
+                            <div class="stat-value" id="statHeight">--</div>
+                        </div>
+                    </div>
+                    <div class="field-row divider-top">
+                        <div class="field">
+                            <label for="clubSelect">클럽</label>
+                            <select id="clubSelect">
                                 <option value="driver" selected>드라이버</option>
                                 <option value="3w">3번 우드</option>
                                 <option value="5w">5번 우드</option>
@@ -178,41 +189,24 @@
                                 <option value="pw">피칭 웨지</option>
                             </select>
                         </div>
-                        <div>
-                            <label for="carryInput" class="text-xs text-slate-400 font-bold">실제 캐리 (m, 선택)</label>
-                            <input type="number" id="carryInput" min="0" placeholder="자동 추정" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm">
+                        <div class="field">
+                            <label for="carryInput">실제 캐리 (m)</label>
+                            <input type="number" id="carryInput" min="0" placeholder="자동 추정">
                         </div>
                     </div>
-                    <p id="carryNote" class="text-[11px] text-slate-500 mt-2">체공 시간과 클럽으로 추정한 값입니다.</p>
+                    <p id="carryNote" class="hint">체공 시간과 클럽으로 추정한 값입니다.</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Carry (추정)</span>
-                        <div class="text-xl font-bold text-white" id="statCarry">--</div>
+
+                <div class="card">
+                    <h2 class="card-title">트레이서</h2>
+                    <div class="control-row">
+                        <label for="tracerWidth">굵기</label>
+                        <input type="range" id="tracerWidth" min="2" max="12" step="0.5" value="5">
+                        <span id="tracerWidthVal" class="control-value">5</span>
                     </div>
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Flight Time</span>
-                        <div class="text-xl font-bold text-white"><span id="statTime">0.0</span>s</div>
-                    </div>
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Ball Speed (추정)</span>
-                        <div class="text-xl font-bold text-white" id="statSpeed">--</div>
-                    </div>
-                    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Apex Height (추정)</span>
-                        <div class="text-xl font-bold text-white" id="statHeight">--</div>
-                    </div>
-                </div>
-                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                    <h3 class="text-xs text-slate-400 font-bold mb-2">트레이서 스타일</h3>
-                    <div class="flex items-center gap-3">
-                        <label for="tracerWidth" class="text-xs text-slate-400">굵기</label>
-                        <input type="range" id="tracerWidth" min="2" max="12" step="0.5" value="5" class="flex-grow">
-                        <span id="tracerWidthVal" class="text-xs font-mono text-white w-6 text-right">5</span>
-                    </div>
-                    <div class="flex items-center gap-3 mt-3">
-                        <span class="text-xs text-slate-400">색</span>
-                        <div class="flex items-center gap-2 flex-wrap">
+                    <div class="control-row">
+                        <span class="control-label">색</span>
+                        <div class="swatches">
                             <button type="button" class="tracer-swatch" data-color="#ffffff" aria-label="흰색" title="흰색"></button>
                             <button type="button" class="tracer-swatch" data-color="#facc15" aria-label="노랑" title="노랑"></button>
                             <button type="button" class="tracer-swatch" data-color="#ef4444" aria-label="빨강" title="빨강"></button>
@@ -223,29 +217,21 @@
                         </div>
                     </div>
                 </div>
-                <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 h-48">
-                    <canvas id="chart"></canvas>
+
+                <div class="card">
+                    <h2 class="card-title">높이 프로필</h2>
+                    <div class="chart-box"><canvas id="chart"></canvas></div>
                 </div>
             </div>
-
-            <!-- Steps -->
-            <div class="bg-slate-800 rounded-lg p-4 grid grid-cols-5 gap-1 text-center text-xs border border-slate-700 shadow-sm">
-                <div id="step1" class="text-white font-bold border-b-2 border-white pb-2">1. 타격</div>
-                <div id="step2" class="text-slate-500 border-b-2 border-transparent pb-2">2. 중간궤적</div>
-                <div id="step3" class="text-slate-500 border-b-2 border-transparent pb-2">3. 낙하</div>
-                <div id="step4" class="text-slate-500 border-b-2 border-transparent pb-2">4. 결과</div>
-                <div id="step5" class="text-slate-500 border-b-2 border-transparent pb-2">5. 정보</div>
-            </div>
-        </div>
+        </aside>
     </main>
-
 
     <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
     <!-- 배포 시 ?v= 값을 올려 브라우저 캐시를 무효화 -->
-    <script src="js/spline.js?v=6"></script>
-    <script src="js/export-utils.js?v=6"></script>
-    <script src="js/ballistics.js?v=6"></script>
-    <script src="js/app.js?v=6"></script>
-    <script src="js/mp4-export.js?v=6"></script>
+    <script src="js/spline.js?v=7"></script>
+    <script src="js/export-utils.js?v=7"></script>
+    <script src="js/ballistics.js?v=7"></script>
+    <script src="js/app.js?v=7"></script>
+    <script src="js/mp4-export.js?v=7"></script>
 </body>
 </html>
