@@ -69,7 +69,64 @@
         return { nx: a.nx + (b.nx - a.nx) * f, ny: a.ny + (b.ny - a.ny) * f, t, index: lo };
     }
 
-    const api = { computeSpline, computeStats, sortPoints, pointAt, STEPS_PER_SEGMENT };
+    /** 경로 샘플별 누적 화면 길이(픽셀 기준). w, h는 영상 크기 */
+    function arcLengths(path, w, h) {
+        const cum = [0];
+        for (let i = 1; i < path.length; i++) {
+            cum.push(cum[i - 1] + Math.hypot((path[i].nx - path[i - 1].nx) * w, (path[i].ny - path[i - 1].ny) * h));
+        }
+        return cum;
+    }
+
+    /** 누적 길이 s 지점의 위치 (범위 밖은 양 끝으로 고정). index는 s 이하인 마지막 샘플 */
+    function pointAtArc(path, cum, s) {
+        if (!path.length) return null;
+        const last = path.length - 1;
+        if (s <= 0) return { nx: path[0].nx, ny: path[0].ny, index: 0 };
+        if (s >= cum[last]) return { nx: path[last].nx, ny: path[last].ny, index: last };
+        let lo = 0, hi = last;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (cum[mid] <= s) lo = mid; else hi = mid;
+        }
+        const a = path[lo], b = path[hi];
+        const f = cum[hi] > cum[lo] ? (s - cum[lo]) / (cum[hi] - cum[lo]) : 0;
+        return { nx: a.nx + (b.nx - a.nx) * f, ny: a.ny + (b.ny - a.ny) * f, index: lo };
+    }
+
+    /** 진행 프로필: 클릭한 점(매듭)을 클릭한 시각에 정확히 지나면서, 그 사이의 속도를 매끄럽게 잇는다.
+     *  knots: [{t, s}] (시간·누적 길이 모두 증가), boost: 출발 속도 배율(1 = 첫 구간 평균 속도, 최대 3)
+     *  단조 3차 보간(Fritsch-Carlson)이라 뒤로 가거나 튀지 않는다. 반환: 매듭별 기울기 포함 프로필 */
+    function buildProfile(knots, boost = 1) {
+        const k = knots.filter((p, i) => i === 0 || p.t > knots[i - 1].t);
+        const n = k.length;
+        if (n < 2) return { knots: k, slopes: k.map(() => 0) };
+        const d = [];
+        for (let i = 0; i < n - 1; i++) d.push((k[i + 1].s - k[i].s) / (k[i + 1].t - k[i].t));
+        const m = new Array(n).fill(0);
+        for (let i = 1; i < n - 1; i++) {
+            m[i] = d[i - 1] > 0 && d[i] > 0 ? 2 * d[i - 1] * d[i] / (d[i - 1] + d[i]) : 0;
+        }
+        m[0] = d[0] * Math.min(3, Math.max(0, boost));
+        m[n - 1] = Math.min(d[n - 2], n > 2 ? 3 * d[n - 2] : d[n - 2]);
+        return { knots: k, slopes: m };
+    }
+
+    /** 프로필에서 시각 t의 누적 길이 (범위 밖은 양 끝으로 고정) */
+    function arcAtTime(profile, t) {
+        const k = profile.knots, m = profile.slopes;
+        if (!k.length) return 0;
+        if (t <= k[0].t) return k[0].s;
+        if (t >= k[k.length - 1].t) return k[k.length - 1].s;
+        let i = 0;
+        while (i < k.length - 2 && t >= k[i + 1].t) i++;
+        const h = k[i + 1].t - k[i].t;
+        const u = (t - k[i].t) / h, u2 = u * u, u3 = u2 * u;
+        return (2 * u3 - 3 * u2 + 1) * k[i].s + (u3 - 2 * u2 + u) * h * m[i]
+             + (-2 * u3 + 3 * u2) * k[i + 1].s + (u3 - u2) * h * m[i + 1];
+    }
+
+    const api = { computeSpline, computeStats, sortPoints, pointAt, arcLengths, pointAtArc, buildProfile, arcAtTime, STEPS_PER_SEGMENT };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.Spline = api;
 })(typeof window !== 'undefined' ? window : globalThis);

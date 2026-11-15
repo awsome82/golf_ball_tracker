@@ -145,9 +145,11 @@ select option { background: var(--surface); color: var(--text); }
 
 .control-row { display: flex; align-items: center; gap: 12px; }
 .control-row + .control-row { margin-top: 14px; }
-.control-row label, .control-label { font-size: 12px; color: var(--muted); width: 28px; flex-shrink: 0; }
+.control-row label, .control-label { font-size: 12px; color: var(--muted); width: 56px; flex-shrink: 0; }
 .control-row input[type=range] { flex: 1; min-width: 0; }
-.control-value { font-family: var(--font-display); font-size: 20px; width: 28px; text-align: right; line-height: 1; padding-top: 3px; }
+.control-value { font-family: var(--font-display); font-size: 20px; width: 52px; font-variant-numeric: tabular-nums; text-align: right; line-height: 1; padding-top: 3px; }
+.control-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.link-btn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tracer-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-strong); cursor: pointer; padding: 0; transition: transform 0.1s; }
 .tracer-swatch:hover { transform: scale(1.1); }

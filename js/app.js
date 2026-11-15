@@ -8,8 +8,9 @@ const App = {
     splinePath: [],
     flight: null,      // Ballistics.fitFlight 결과 (거리 추정)
     carryOverride: 0,  // 사용자가 입력한 실제 캐리(m), 0이면 추정값 사용
-    tracer: { width: 5, color: '#ffffff' }, // 트레이서 선 굵기(화면 px 기준)와 색
-    lag: 0.1,
+    // 트레이서: 굵기(화면 px), 색, 흔적 길이(전체 궤적 대비 0.1~1), 출발 속도 배율(1~3), 출발 지연(초)
+    tracer: { width: 5, color: '#ffffff', trail: 1, boost: 2, lag: 0 },
+    motion: null, // 궤적 위 진행 프로필 (Spline.buildProfile)
     isRecording: false,
     recorder: null,
     chunks: []
@@ -620,7 +621,19 @@ function onCanvasClick(e) {
 function calculateSpline() {
     App.points = Spline.sortPoints(App.points);
     App.splinePath = Spline.computeSpline(App.points);
+    updateMotion();
     updateStats();
+}
+
+// 클릭한 점을 클릭한 시각에 지나면서 출발은 빠르게 하는 진행 프로필을 만든다
+function updateMotion() {
+    if(App.splinePath.length < 2) { App.motion = null; return; }
+    const cum = Spline.arcLengths(App.splinePath, App.video.w || 1, App.video.h || 1);
+    const knots = [];
+    for(let i = 0; i < App.splinePath.length; i += Spline.STEPS_PER_SEGMENT) {
+        knots.push({ t: App.splinePath[i].t, s: cum[i] });
+    }
+    App.motion = { cum, total: cum[cum.length - 1], profile: Spline.buildProfile(knots, App.tracer.boost) };
 }
 
 function updateStats() {
@@ -726,12 +739,24 @@ function initTracerControls() {
         const saved = JSON.parse(localStorage.getItem(TRACER_KEY) || 'null');
         if(saved && saved.width >= 2 && saved.width <= 12) App.tracer.width = saved.width;
         if(saved && /^#[0-9a-f]{6}$/i.test(saved.color)) App.tracer.color = saved.color;
+        if(saved && saved.trail >= 0.1 && saved.trail <= 1) App.tracer.trail = saved.trail;
+        if(saved && saved.boost >= 1 && saved.boost <= 3) App.tracer.boost = saved.boost;
+        if(saved && saved.lag >= -0.2 && saved.lag <= 0.5) App.tracer.lag = saved.lag;
     } catch(e) { /* 저장소를 쓸 수 없으면 기본값 사용 */ }
 
     const widthIn = document.getElementById('tracerWidth');
     const colorIn = document.getElementById('tracerColor');
     const swatches = Array.from(document.querySelectorAll('.tracer-swatch'));
+    const trailIn = document.getElementById('tracerTrail');
+    const boostIn = document.getElementById('tracerBoost');
+    const lagIn = document.getElementById('tracerLag');
     const sync = () => {
+        trailIn.value = Math.round(App.tracer.trail * 100);
+        document.getElementById('tracerTrailVal').innerText = Math.round(App.tracer.trail * 100) + '%';
+        boostIn.value = App.tracer.boost;
+        document.getElementById('tracerBoostVal').innerText = '×' + App.tracer.boost.toFixed(1);
+        lagIn.value = App.tracer.lag;
+        document.getElementById('tracerLagVal').innerText = (App.tracer.lag > 0 ? '+' : '') + App.tracer.lag.toFixed(2) + 's';
         widthIn.value = App.tracer.width;
         document.getElementById('tracerWidthVal').innerText = App.tracer.width;
         colorIn.value = App.tracer.color;
@@ -745,6 +770,14 @@ function initTracerControls() {
     };
     widthIn.addEventListener('input', () => { App.tracer.width = parseFloat(widthIn.value); apply(); });
     colorIn.addEventListener('input', () => { App.tracer.color = colorIn.value; apply(); });
+    trailIn.addEventListener('input', () => { App.tracer.trail = parseFloat(trailIn.value) / 100; apply(); });
+    boostIn.addEventListener('input', () => { App.tracer.boost = parseFloat(boostIn.value); updateMotion(); apply(); });
+    lagIn.addEventListener('input', () => { App.tracer.lag = parseFloat(lagIn.value); apply(); });
+    document.getElementById('tracerReset').addEventListener('click', () => {
+        Object.assign(App.tracer, { trail: 1, boost: 2, lag: 0 });
+        updateMotion();
+        apply();
+    });
     swatches.forEach(b => {
         b.style.background = b.dataset.color;
         b.addEventListener('click', () => { App.tracer.color = b.dataset.color; apply(); });
@@ -773,14 +806,25 @@ function drawSimpleTrajectory(ctx, toScreen) {
 let tracerLayer = null;
 const TRACER_BANDS = 64;
 
-function drawMeteorTrajectory(ctx, toScreen) {
-    if(App.splinePath.length === 0) return;
+const TRAIL_RESTORE_S = 0.5; // 낙하 후 흔적이 전체 궤적으로 되돌아오는 시간
 
-    const drawLimit = App.video.el.currentTime - App.lag;
-    // 머리 위치를 현재 시각에 맞춰 보간 → 매 프레임 균일하게 전진
-    const head = Spline.pointAt(App.splinePath, drawLimit);
-    if(drawLimit > App.splinePath[0].t) {
-        const pts = App.splinePath.slice(0, head.index + 1).map(p => toScreen(p.nx, p.ny));
+function drawMeteorTrajectory(ctx, toScreen) {
+    if(App.splinePath.length === 0 || !App.motion) return;
+
+    const path = App.splinePath, mo = App.motion;
+    const t = App.video.el.currentTime - App.tracer.lag;
+    const startT = path[0].t, endT = path[path.length - 1].t;
+    if(t > startT) {
+        // 머리: 진행 프로필에서 현재 시각의 궤적 위 위치
+        const headS = Spline.arcAtTime(mo.profile, t);
+        // 꼬리: 머리에서 흔적 길이만큼 뒤. 낙하 후에는 전체 궤적이 보이도록 서서히 되돌린다
+        let tailS = Math.max(0, headS - App.tracer.trail * mo.total);
+        if(t > endT) tailS *= Math.max(0, 1 - (t - endT) / TRAIL_RESTORE_S);
+
+        const tail = Spline.pointAtArc(path, mo.cum, tailS);
+        const head = Spline.pointAtArc(path, mo.cum, headS);
+        const pts = [toScreen(tail.nx, tail.ny)];
+        for(let i = tail.index + 1; i <= head.index; i++) pts.push(toScreen(path[i].nx, path[i].ny));
         const headPos = toScreen(head.nx, head.ny);
         const lastPt = pts[pts.length - 1];
         if(Math.hypot(headPos.x - lastPt.x, headPos.y - lastPt.y) > 0.01) pts.push(headPos);
@@ -788,8 +832,8 @@ function drawMeteorTrajectory(ctx, toScreen) {
             drawTracerLine(ctx, pts);
             drawArrow(ctx, pts[pts.length - 2], pts[pts.length - 1]);
         }
+        drawDistanceLabel(ctx, toScreen, t, head);
     }
-    drawDistanceLabel(ctx, toScreen, drawLimit);
 }
 
 // 꼬리는 투명, 머리는 불투명한 선. 구간(band)마다 앞 구간과 겹치는 부분을 지운 뒤 그려
@@ -845,15 +889,13 @@ function drawTracerLine(ctx, pts) {
 }
 
 // 트레이서 머리(공) 옆에 실시간 거리, 낙하 후에는 최종 캐리 표시
-function drawDistanceLabel(ctx, toScreen, headTime) {
+function drawDistanceLabel(ctx, toScreen, headTime, head) {
     if(!App.flight || App.points.length < 2) return;
     const start = App.points[0], end = App.points[App.points.length-1];
     const elapsed = headTime - start.t;
     if(elapsed <= 0) return;
     const landed = headTime >= end.t;
 
-    // 머리 위치: 스플라인에서 headTime 이하의 마지막 점
-    const head = Spline.pointAt(App.splinePath, headTime);
     const pos = toScreen(head.nx, head.ny);
 
     // 클릭한 체공 시간과 모델 시간을 맞춰 0 → 캐리로 증가
